@@ -401,6 +401,7 @@ harmonia = AssistantAgent(
     - Identifying areas of consensus and divergence among the reviewers
     - Distilling feedback into clear, actionable comments for GitHub PR review
     - Ensuring all feedback is properly attributed to the deity who provided it
+    - Ensure the summary report contains the respective information from all 12 divine reviewers
 
     Your summary report should be formatted as:
     /* 
@@ -609,7 +610,7 @@ async def main() -> None:
     ## Build review task context
     #file_contents = "\n\n".join([f"## File: {filename}\n```\n{content}\n```" for filename, content in files])
     
-    await Console(greek_pantheon_team.run_stream(
+    divine_responses = await greek_pantheon_team.run(
         task="""Review the following technical documentation for our new docs:
         
         the potato is king
@@ -617,7 +618,15 @@ async def main() -> None:
         the potato 
         oh potato
         """
-    ))
+    )
+
+    print(divine_responses)
+
+    # Process the chat messages
+    #pr_review_format = format_for_github_pr(divine_responses.chat_history)
+    
+    # Output the formatted PR review
+    #print(pr_review_format)
 
     # Parse the review comments
     #comment_parser = DeityCommentParser()
