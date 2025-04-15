@@ -540,7 +540,7 @@ class PRPantheonReviewChat:
         review_feedback = []
         for reviewer in self.reviewers:
             print(f"🔍 {reviewer.name} is reviewing the PR...")
-            response = await reviewer.on_messages(task)
+            response = await reviewer.run_stream(task)
             review_feedback.append(f"{reviewer.name}: {response}")
             self.all_messages.append(response)
                     
@@ -570,7 +570,7 @@ class PRPantheonReviewChat:
         Group related feedback by file, and within each file by line number.
         """
                 
-        summary_message = await self.summary_agent.on_messages(summary_request)
+        summary_message = await self.summary_agent.run_stream(summary_request)
 
         print(f"Harmonia has completed the summary.")
         return summary_message
