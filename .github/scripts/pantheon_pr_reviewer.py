@@ -427,164 +427,10 @@ harmonia = AssistantAgent(
     """
 )
 
-#######################################
-# AutoGen team and behavior definitions
-#######################################
-
-# Define a termination condition that stops the task if a special phrase is mentioned
-text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
-
-# Create a team with all the Greek gods and goddesses
-greek_pantheon_team = RoundRobinGroupChat(
-    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
-    termination_condition=text_termination
-)
 
 ##########################
 # Custom class definitions
 ##########################
-
-# GitHub interaction class
-class GitHubPRHandler:
-    def __init__(self, token: str, repo_name: str, pr_number: int):
-        self.github = Github(token)
-        self.repo = self.github.get_repo(repo_name)
-        self.pr = self.repo.get_pull(pr_number)
-        
-    def get_pr_files(self) -> List[Tuple[str, str]]:
-        """Get files changed in the PR with their content"""
-        files = []
-        for file in self.pr.get_files():
-            if file.status != "removed":
-                content = self.repo.get_contents(file.filename, ref=self.pr.head.sha).decoded_content.decode('utf-8')
-                files.append((file.filename, content))
-        return files
-    
-    def get_pr_diff(self) -> str:
-        """Get the full diff of the PR"""
-        diff = []
-        for file in self.pr.get_files():
-            if hasattr(file, 'patch') and file.patch:  # Not all files have a patch (e.g., binary files)
-                diff.append(f"--- {file.filename}\n{file.patch}")
-        return "\n".join(diff)
-
-    def add_review_comment(self, path: str, position: int, body: str):
-        """Add a review comment to the PR at the specified position"""
-        self.pr.create_review_comment(body=body, commit_id=self.pr.head.sha, path=path, position=position)
-    
-    def submit_review(self, comments: List[Dict], review_body: str):
-        """Submit a full review with multiple comments"""
-        self.pr.create_review(
-            commit_id=self.pr.head.sha,
-            body=review_body,
-            event="COMMENT",
-            comments=comments
-        )
-
-# Helper class for parsing deity comments and mapping to GitHub PR locations
-class DeityCommentParser:
-    @staticmethod
-    def parse_comment(comment: str) -> Dict:
-        """Parse a deity comment to extract path, line number, and content"""
-        # Pattern to match: /* [SECTION: file_path:line_number] [DEITY: Name (Domain)] */
-        pattern = r"/\*\s*\[SECTION:\s*([^:]+):(\d+)\]\s*\[DEITY:\s*([^(]+)\s*\(([^)]+)\)\]\s*\*/(.*?)(?=/\*|$)"
-        matches = re.findall(pattern, comment, re.DOTALL)
-        
-        parsed_comments = []
-        for match in matches:
-            if len(match) >= 5:
-                file_path = match[0].strip()
-                line_number = int(match[1])
-                deity_name = match[2].strip()
-                deity_domain = match[3].strip()
-                feedback = match[4].strip()
-                
-                parsed_comments.append({
-                    "path": file_path,
-                    "line": line_number,
-                    "deity": deity_name,
-                    "domain": deity_domain,
-                    "feedback": feedback
-                })
-                
-        return parsed_comments
-
-# Modified version of your PantheonReviewChat class
-class PRPantheonReviewChat:
-    def __init__(self, reviewers, summary_agent):
-        self.reviewers = reviewers
-        self.summary_agent = summary_agent
-        self.all_messages = []
-        
-    async def review_pr(self, pr_handler: GitHubPRHandler) -> str:
-        """Review a PR using the pantheon of reviewers"""
-        # Get PR files and diff
-        files = pr_handler.get_pr_files()
-        diff = pr_handler.get_pr_diff()
-        
-        # Build review task context
-        file_contents = "\n\n".join([f"## File: {filename}\n```\n{content}\n```" for filename, content in files])
-        
-        task = f"""Review the following code changes from a GitHub Pull Request:
-
-        DIFF:
-        ```diff
-        {diff}
-        ```
-
-        FILE CONTENTS:
-        {file_contents}
-
-        Please review these changes according to your divine domain of expertise.
-        IMPORTANT: When referring to specific code, please include the filename and line number in this format:
-        [SECTION: filename:line_number]
-
-        Your feedback should be specific, constructive, and actionable.
-        """
-        
-        # Collect feedback from each reviewer
-        review_feedback = []
-        for reviewer in self.reviewers:
-            print(f"🔍 {reviewer.name} is reviewing the PR...")
-            response = await reviewer.on_messages(
-                [TextMessage(content=task, source="user")],
-                CancellationToken()
-            )
-            review_feedback.append(f"{reviewer.name}: {response}")
-            self.all_messages.append(response)
-                    
-        # Generate summary with Harmonia
-        print("\n\n---------- GENERATING DIVINE SUMMARY ----------\n")
-        summary_context = "\n\n".join(review_feedback)
-        
-        summary_request = f"""
-        I need you to generate a comprehensive summary report of all the feedback provided by the divine reviewers on this Pull Request.
-
-        Here is all the feedback from the divine pantheon:
-
-        {summary_context}
-
-        Please organize the feedback by file and line number, format it as comments that can be posted to GitHub, 
-        and ensure each piece of feedback is attributed to the appropriate deity with their domain.
-
-        FORMAT EACH COMMENT LIKE THIS:
-        /* 
-        * [SECTION: filename:line_number] 
-        * [DEITY: Deity name (Domain)]
-        * [SCORE: 0-100] 
-        * 
-        * Feedback details...
-        */
-
-        Group related feedback by file, and within each file by line number.
-        """
-                
-        summary_message = await self.summary_agent.run_stream(summary_request)
-
-        print(f"Harmonia has completed the summary.")
-        return summary_message
-    
-
 
 # The new classes from Claude - v2    
 class PRContentFetcher:
@@ -1149,6 +995,19 @@ async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
     # Fetch PR content
     pr_fetcher = PRContentFetcher(token, repo_name, pr_number)
     formatted_content, files_dict = pr_fetcher.process_pr_content()
+
+    #######################################
+    # AutoGen team and behavior definitions
+    #######################################
+
+    # Define a termination condition that stops the task if a special phrase is mentioned
+    text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
+
+    # Create a team with all the Greek gods and goddesses
+    greek_pantheon_team = RoundRobinGroupChat(
+        [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+        termination_condition=text_termination
+    )
 
 # Create the task description with the PR content
     task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
