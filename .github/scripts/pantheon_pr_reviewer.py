@@ -1011,17 +1011,17 @@ async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
 
 # Create the task description with the PR content
     task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
-- Provide the response in following JSON format:  {{\"reviews\": [{{\"lineNumber\":  <line_number>, \"reviewComment\": \"<review comment>\"}}]}}
-- Do not give positive comments or compliments.
-- Write the comment in GitHub Markdown format.
-- IMPORTANT: NEVER suggest adding comments to the code.
-- IMPORTANT: When referring to specific code, please include the filename and line number in this format: [SECTION: filename:line_number]
+    - Provide the response in following JSON format:  {{"reviews": [{{"lineNumber":  <line_number>, "reviewComment": "<review comment>"}}]}}
+    - Do not give positive comments or compliments.
+    - Write the comment in GitHub Markdown format.
+    - IMPORTANT: NEVER suggest adding comments to the code.
+    - IMPORTANT: When referring to specific code, please include the filename and line number in this format: [SECTION: filename:line_number]
 
-Review the following code diff:
-{formatted_content}
+    Review the following code diff:
+    {formatted_content}
 
-Your feedback should be specific, constructive, and actionable.
-"""
+    Your feedback should be specific, constructive, and actionable.
+    """
        
     # Run the review
     divine_responses = await greek_pantheon_team.run(task=task)
@@ -1042,12 +1042,9 @@ Your feedback should be specific, constructive, and actionable.
     return divine_responses
 
 
-# Entry point for the GitHub Action - v2
-if __name__ == "__main__":
-
-    # Run the review and comment process
-    asyncio.run(run_review_and_comment(
-        token=github_token,
-        repo_name=repository,
-        pr_number=pr_number
-    ))
+# Entry point for the GitHub Action without the main guard
+asyncio.run(run_review_and_comment(
+    token=github_token,
+    repo_name=repository,
+    pr_number=pr_number
+))
