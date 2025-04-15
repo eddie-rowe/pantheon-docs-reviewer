@@ -587,6 +587,13 @@ async def main():
     # Submit the review with all comments
     harmonia_summary = "# Divine Pantheon Review\n\nThe council of divine reviewers has completed their assessment of this Pull Request."
     pr_handler.submit_review(github_comments, harmonia_summary)
+
+    # Write Harmonia's review summary to the GitHub Step Summary
+    step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if step_summary_path:
+        with open(step_summary_path, "w", encoding="utf-8") as f:
+            f.write("# Divine Pantheon Review Summary\n\n")
+            f.write(review_summary)
     
     # Close the model client
     await model_client.close()
