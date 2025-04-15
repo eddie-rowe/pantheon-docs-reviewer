@@ -978,9 +978,92 @@ class GitHubPRReviewer:
         # Add the summary comment to the PR
         self.pr.create_issue_comment(comment)
 
+ 
+#######################################
+# AutoGen team and behavior definitions
+#######################################
+
+# Define a termination condition that stops the task if a special phrase is mentioned
+text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
+
+# Create a team with all the Greek gods and goddesses
+greek_pantheon_team = RoundRobinGroupChat(
+    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+    termination_condition=text_termination
+)
+
+# Example diff
+formatted_content = """
+--- README.md
+
+# Divine Pantheon GitHub PR Reviewer
+
+This GitHub Action combines the power of an autogen "pantheon" of specialized AI reviewers with GitHub's PR review capabilities. Each "deity" reviewer specializes in a different aspect of code quality and provides tailored feedback directly on your pull requests.
+
+## Features
+
+- **Specialized Review Domains**: Each AI reviewer (deity) focuses on a specific aspect of code quality:
+  - **Apollo**: Style guide adherence and code aesthetics
+  - **Hermes**: Readability and communication clarity
+  - **Athena**: Cognitive load reduction and code complexity
+  - **Hestia**: Documentation structure and organization
+  - **Mnemosyne**: Context completeness
+  - **Hephaestus**: Code accuracy and functionality
+  - **Heracles**: Cross-linking and code relationships
+  - **Demeter**: Terminology consistency
+  - **Aphrodite**: Code formatting and visual presentation
+  - **Iris**: Accessibility
+  - **Dionysus**: Visual aid suggestions
+  - **Chronos**: Knowledge decay and outdated patterns
+
+- **Harmonious Summary**: Harmonia provides an integrated review summary combining all feedback
+
+- **In-line PR Comments**: Each reviewer's feedback is added as in-line comments at the relevant locations in your code
+
+## Setup Instructions
+
+### 1. Add the workflow file
+
+Create a file `.github/workflows/pantheon-review.yml` in your repository with the content from the provided workflow YAML.
+
+### 2. Add the pantheon reviewer script
+
+Save the provided Python script as `pantheon_pr_reviewer.py` in your repository.
+
+### 3. Set up secrets
+
+Add the following secrets to your GitHub repository:
+- `OPENAI_API_KEY`: Your OpenAI API key
+"""
+
+# Create the task description with the PR content
+task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
+- Provide the response in following JSON format:  {{"reviews": [{{"lineNumber":  <line_number>, "reviewComment": "<review comment>"}}]}}
+- Do not give positive comments or compliments.
+- Write the comment in GitHub Markdown format.
+- IMPORTANT: NEVER suggest adding comments to the code.
+- IMPORTANT: When referring to specific code, please include the filename and line number in this format: [SECTION: filename:line_number]
+
+Review the following code diff:
+{formatted_content}
+
+Your feedback should be specific, constructive, and actionable.
+"""
+
 ####################
 # PyGithub functions
 ####################
+
+# Main function to run the GitHub Action
+async def main() -> None:
+
+    # Run the review
+    divine_responses = await greek_pantheon_team.run(task=task)
+
+    # Close the connection to the model client
+    await model_client.close()
+    
+    return divine_responses
 
 async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
     """
@@ -1009,7 +1092,7 @@ async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
         termination_condition=text_termination
     )
 
-# Create the task description with the PR content
+    # Create the task description with the PR content
     task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
     - Provide the response in following JSON format:  {{"reviews": [{{"lineNumber":  <line_number>, "reviewComment": "<review comment>"}}]}}
     - Do not give positive comments or compliments.
@@ -1042,9 +1125,14 @@ async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
     return divine_responses
 
 
-# Entry point for the GitHub Action without the main guard
-asyncio.run(run_review_and_comment(
-    token=github_token,
-    repo_name=repository,
-    pr_number=pr_number
-))
+# Entry point for the GitHub Action - v2
+if __name__ == "__main__":
+
+    # Run the review and comment process
+    #asyncio.run(run_review_and_comment(
+    #    token=github_token,
+    #    repo_name=repository,
+    #    pr_number=pr_number
+    #))
+
+    asyncio.run(main())
