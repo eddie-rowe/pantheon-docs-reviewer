@@ -1149,10 +1149,10 @@ async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
     # Fetch PR content
     pr_fetcher = PRContentFetcher(token, repo_name, pr_number)
     formatted_content, files_dict = pr_fetcher.process_pr_content()
-    
-    # Create the task description with the PR content
+
+# Create the task description with the PR content
     task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
-- Provide the response in following JSON format:  {"reviews": [{"lineNumber":  <line_number>, "reviewComment": "<review comment>"}]}
+- Provide the response in following JSON format:  {{\"reviews\": [{{\"lineNumber\":  <line_number>, \"reviewComment\": \"<review comment>\"}}]}}
 - Do not give positive comments or compliments.
 - Write the comment in GitHub Markdown format.
 - IMPORTANT: NEVER suggest adding comments to the code.
