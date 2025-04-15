@@ -540,7 +540,10 @@ class PRPantheonReviewChat:
         review_feedback = []
         for reviewer in self.reviewers:
             print(f"🔍 {reviewer.name} is reviewing the PR...")
-            response = await reviewer.run_stream(task)
+            response = await reviewer.on_messages(
+                [TextMessage(content=task, source="user")],
+                CancellationToken()
+            )
             review_feedback.append(f"{reviewer.name}: {response}")
             self.all_messages.append(response)
                     
