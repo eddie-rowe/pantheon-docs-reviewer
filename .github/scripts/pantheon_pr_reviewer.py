@@ -29,8 +29,12 @@ class GitHubPRHandler:
     
     def get_pr_diff(self) -> str:
         """Get the full diff of the PR"""
-        return self.pr.diff()
-    
+        diff = []
+        for file in self.pr.get_files():
+            if hasattr(file, 'patch') and file.patch:  # Not all files have a patch (e.g., binary files)
+                diff.append(f"--- {file.filename}\n{file.patch}")
+        return "\n".join(diff)
+
     def add_review_comment(self, path: str, position: int, body: str):
         """Add a review comment to the PR at the specified position"""
         self.pr.create_review_comment(body=body, commit_id=self.pr.head.sha, path=path, position=position)
