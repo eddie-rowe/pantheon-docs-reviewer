@@ -516,12 +516,10 @@ Your feedback should be specific, constructive, and actionable.
         review_feedback = []
         for reviewer in self.reviewers:
             print(f"🔍 {reviewer.name} is reviewing the PR...")
-            response = await reviewer.generate_reply(
-                messages=[{"role": "user", "content": task}]
-            )
-            review_feedback.append(f"{reviewer.name}: {response.content}")
+            response = await reviewer.aask(task)
+            review_feedback.append(f"{reviewer.name}: {response}")
             self.all_messages.append(response)
-        
+                    
         # Generate summary with Harmonia
         print("\n\n---------- GENERATING DIVINE SUMMARY ----------\n")
         summary_context = "\n\n".join(review_feedback)
@@ -548,13 +546,12 @@ FORMAT EACH COMMENT LIKE THIS:
 Group related feedback by file, and within each file by line number.
 """
         
-        summary_message = await self.summary_agent.generate_reply(
-            messages=[{"role": "user", "content": summary_request}]
-        )
+        summary_message = await self.summary_agent.aask(summary_request)
+
         
         print(f"Harmonia has completed the summary.")
-        return summary_message.content
-
+        return summary_message
+    
 # Main function to run the GitHub Action
 async def main():
     # Get GitHub action inputs
