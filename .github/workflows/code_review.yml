@@ -27,6 +27,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai PyGithub autogen-agentchat autogen-core autogen-ext
+
       - name: Code Review
         uses: freeedcom/ai-codereviewer@main
         with:
@@ -34,11 +39,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_API_MODEL: "gpt-4-1106-preview"
           exclude: "yarn.lock,dist/**"
-          
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install PyGithub autogen-agentchat autogen-core autogen-ext
       
       - name: Run Pantheon Review
         env:
