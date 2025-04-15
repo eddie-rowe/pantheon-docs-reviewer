@@ -602,29 +602,26 @@ async def main():
     # Run the divine review - v2
 
     ## Get PR files and diff
-    files = pr_handler.get_pr_files()
+    #files = pr_handler.get_pr_files()
     diff = pr_handler.get_pr_diff()
     
     ## Build review task context
-    file_contents = "\n\n".join([f"## File: {filename}\n```\n{content}\n```" for filename, content in files])
+    #file_contents = "\n\n".join([f"## File: {filename}\n```\n{content}\n```" for filename, content in files])
     
     await Console(greek_pantheon_team.run_stream(
-    task = f"""Review the following code changes from a GitHub Pull Request:
+        task = f"""Review the following code changes from a GitHub Pull Request:
 
-    DIFF:
-    ```diff
-    {diff}
-    ```
+            DIFF:
+            ```diff
+            {diff}
+            ```
 
-    FILE CONTENTS:
-    {file_contents}
+            Please review these changes according to your divine domain of expertise.
+            IMPORTANT: When referring to specific code, please include the filename and line number in this format:
+            [SECTION: filename:line_number]
 
-    Please review these changes according to your divine domain of expertise.
-    IMPORTANT: When referring to specific code, please include the filename and line number in this format:
-    [SECTION: filename:line_number]
-
-    Your feedback should be specific, constructive, and actionable.
-    """
+            Your feedback should be specific, constructive, and actionable.
+            """
     ))
 
     # Parse the review comments
