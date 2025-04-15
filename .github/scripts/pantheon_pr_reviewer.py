@@ -8,6 +8,7 @@ from autogen_agentchat.conditions import TextMentionTermination
 from autogen_agentchat.messages import TextMessage
 import os
 import re
+import json
 from github import Github
 from typing import Dict, List, Tuple, Optional
 
@@ -16,9 +17,9 @@ from typing import Dict, List, Tuple, Optional
 ####################
 
 # Get GitHub action inputs
-github_token = os.environ["INPUT_GITHUB_TOKEN"]
-repository = os.environ["GITHUB_REPOSITORY"]
-pr_number = int(os.environ["INPUT_PR_NUMBER"])
+#github_token = os.environ["INPUT_GITHUB_TOKEN"]
+#repository = os.environ["GITHUB_REPOSITORY"]
+#pr_number = int(os.environ["INPUT_PR_NUMBER"])
 
 ###################################
 # AutoGen model client definitions
@@ -978,6 +979,42 @@ class GitHubPRReviewer:
         # Add the summary comment to the PR
         self.pr.create_issue_comment(comment)
 
+
+
+
+def parse_task_result_for_reviews(task_result):
+    all_inline_comments = []
+    all_general_comments = []
+
+    for message in task_result.messages:
+        if message.source == "user":
+            continue  # skip the task prompt
+
+        try:
+            data = json.loads(message.content)
+            deity_name = message.source
+
+            for inline in data.get("inlineReviews", []):
+                all_inline_comments.append({
+                    "deity": deity_name,
+                    "filename": inline["filename"],
+                    "lineNumber": inline["lineNumber"],
+                    "body": inline["reviewComment"]
+                })
+
+            for general in data.get("generalReviews", []):
+                all_general_comments.append({
+                    "deity": deity_name,
+                    "filename": general["filename"],
+                    "body": general["reviewComment"]
+                })
+
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Could not parse JSON from {message.source}: {e}")
+            continue
+
+    return all_inline_comments, all_general_comments
+
  
 #######################################
 # AutoGen team and behavior definitions
@@ -1038,17 +1075,37 @@ Add the following secrets to your GitHub repository:
 
 # Create the task description with the PR content
 task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
-- Provide the response in following JSON format:  {{"reviews": [{{"lineNumber":  <line_number>, "reviewComment": "<review comment>"}}]}}
+- Respond in the following JSON format:
+{{
+  "inlineReviews": [
+    {{
+      "filename": "<filename>",
+      "lineNumber": <line_number>,
+      "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
+    }}
+  ],
+  "generalReviews": [
+    {{
+      "filename": "<filename>",
+      "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
+    }}
+  ]
+}}
+- Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
+- Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
+- Do NOT wrap the output in triple backticks or any markdown.
+- DO NOT include explanations or extra commentary.
+- All comments should reflect your unique personality and domain.
 - Do not give positive comments or compliments.
 - Write the comment in GitHub Markdown format.
 - IMPORTANT: NEVER suggest adding comments to the code.
-- IMPORTANT: When referring to specific code, please include the filename and line number in this format: [SECTION: filename:line_number]
 
 Review the following code diff:
 {formatted_content}
 
 Your feedback should be specific, constructive, and actionable.
 """
+
 
 ####################
 # PyGithub functions
@@ -1060,12 +1117,27 @@ async def main() -> None:
     # Run the review
     divine_responses = await greek_pantheon_team.run(task=task)
 
+    # Parse responses into inline + general comments
+    inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
+
+    # Print the parsed results
+    print("\n🔍 Inline Comments:")
+    for comment in inline_reviews:
+        print(comment)
+
+    print("\n📜 General Summary Comments:")
+    for comment in general_reviews:
+        print(comment)
+
     # Close the connection to the model client
     await model_client.close()
     
-    print(divine_responses)
+    #print(divine_responses)
 
-    return divine_responses
+    #return divine_responses
+
+
+
 
 async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
     """
@@ -1129,6 +1201,8 @@ async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
 
 # Entry point for the GitHub Action - v2
 if __name__ == "__main__":
+    # Run the main process
+    asyncio.run(main())
 
     # Run the review and comment process
     #asyncio.run(run_review_and_comment(
@@ -1136,5 +1210,3 @@ if __name__ == "__main__":
     #    repo_name=repository,
     #    pr_number=pr_number
     #))
-
-    asyncio.run(main())
