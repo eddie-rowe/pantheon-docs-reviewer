@@ -584,7 +584,8 @@ class PRPantheonReviewChat:
 ###################
 
 # Main function to run the GitHub Action
-async def main():
+async def main() -> None:
+
     # Get GitHub action inputs
     github_token = os.environ["INPUT_GITHUB_TOKEN"]
     repository = os.environ["GITHUB_REPOSITORY"]
@@ -609,19 +610,13 @@ async def main():
     #file_contents = "\n\n".join([f"## File: {filename}\n```\n{content}\n```" for filename, content in files])
     
     await Console(greek_pantheon_team.run_stream(
-        task = f"""Review the following code changes from a GitHub Pull Request:
-
-            DIFF:
-            ```diff
-            {diff}
-            ```
-
-            Please review these changes according to your divine domain of expertise.
-            IMPORTANT: When referring to specific code, please include the filename and line number in this format:
-            [SECTION: filename:line_number]
-
-            Your feedback should be specific, constructive, and actionable.
-            """
+        task="""Review the following technical documentation for our new docs:
+        
+        the potato is king
+        the potato will give us code
+        the potato 
+        oh potato
+        """
     ))
 
     # Parse the review comments

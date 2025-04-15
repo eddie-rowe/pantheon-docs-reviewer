@@ -32,13 +32,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install openai tiktoken PyGithub autogen-agentchat autogen-core autogen-ext[openai,azure]
 
-      - name: Code Review
-        uses: freeedcom/ai-codereviewer@main
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_MODEL: "gpt-4-1106-preview"
-          exclude: "yarn.lock,dist/**"
+      #- name: Code Review
+      #  uses: freeedcom/ai-codereviewer@main
+      #  with:
+      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      #    OPENAI_API_MODEL: "gpt-4-1106-preview"
+      #    exclude: "yarn.lock,dist/**"
       
       - name: Run Pantheon Review
         env:
