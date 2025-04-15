@@ -588,8 +588,8 @@ async def main():
     pr_handler = GitHubPRHandler(github_token, repository, pr_number)
     
     # Create the pantheon review chat
-    pantheon_review = PRPantheonReviewChat(greek_pantheon_team)
-    
+    pantheon_review = PRPantheonReviewChat(greek_pantheon_team, harmonia)
+
     # Run the review
     review_summary = await pantheon_review.review_pr(pr_handler)
     
