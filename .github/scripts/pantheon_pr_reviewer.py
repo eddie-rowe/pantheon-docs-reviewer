@@ -423,13 +423,16 @@ harmonia = AssistantAgent(
 ###################################
 
 # Define a termination condition that stops the task if a special phrase is mentioned
-text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
+#text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
 
 # Create a team with all the Greek gods and goddesses
-greek_pantheon_team = RoundRobinGroupChat(
-    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
-    termination_condition=text_termination
-)
+#greek_pantheon_team = RoundRobinGroupChat(
+#    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+#    termination_condition=text_termination
+#)
+
+# Define your reviewer agents (excluding harmonia)
+greek_pantheon_team = [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos]
 
 ##########################
 # Custom class definitions
