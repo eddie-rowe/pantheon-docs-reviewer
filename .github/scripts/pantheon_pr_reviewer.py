@@ -1063,6 +1063,8 @@ async def main() -> None:
     # Close the connection to the model client
     await model_client.close()
     
+    print(divine_responses)
+
     return divine_responses
 
 async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
