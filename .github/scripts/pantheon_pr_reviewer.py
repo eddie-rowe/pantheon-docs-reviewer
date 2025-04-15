@@ -11,42 +11,10 @@ import re
 from github import Github
 from typing import Dict, List, Tuple, Optional
 
-# GitHub interaction class
-class GitHubPRHandler:
-    def __init__(self, token: str, repo_name: str, pr_number: int):
-        self.github = Github(token)
-        self.repo = self.github.get_repo(repo_name)
-        self.pr = self.repo.get_pull(pr_number)
-        
-    def get_pr_files(self) -> List[Tuple[str, str]]:
-        """Get files changed in the PR with their content"""
-        files = []
-        for file in self.pr.get_files():
-            if file.status != "removed":
-                content = self.repo.get_contents(file.filename, ref=self.pr.head.sha).decoded_content.decode('utf-8')
-                files.append((file.filename, content))
-        return files
-    
-    def get_pr_diff(self) -> str:
-        """Get the full diff of the PR"""
-        diff = []
-        for file in self.pr.get_files():
-            if hasattr(file, 'patch') and file.patch:  # Not all files have a patch (e.g., binary files)
-                diff.append(f"--- {file.filename}\n{file.patch}")
-        return "\n".join(diff)
 
-    def add_review_comment(self, path: str, position: int, body: str):
-        """Add a review comment to the PR at the specified position"""
-        self.pr.create_review_comment(body=body, commit_id=self.pr.head.sha, path=path, position=position)
-    
-    def submit_review(self, comments: List[Dict], review_body: str):
-        """Submit a full review with multiple comments"""
-        self.pr.create_review(
-            commit_id=self.pr.head.sha,
-            body=review_body,
-            event="COMMENT",
-            comments=comments
-        )
+###################################
+# AutoGen model client definitions
+###################################
 
 # Create an OpenAI model client
 model_client = OpenAIChatCompletionClient(
@@ -205,6 +173,10 @@ mnemosyne = AssistantAgent(
     """
     )
 
+###########################################
+# Accuracy & Consistency Gods and Goddesses
+###########################################
+
 # 6. Code Accuracy - Hephaestus (God of Craftsmen, Artisans, and Blacksmiths)
 hephaestus = AssistantAgent(
     "Hephaestus",
@@ -288,6 +260,10 @@ demeter = AssistantAgent(
     Assume high standards for production code. Output the score in the following format: "SCORE: [0-100]".
     """
     )
+
+#############################################
+# Presentation & Structure Gods and Goddesses
+#############################################
 
 # 9. Formatting - Aphrodite (Goddess of Beauty, Love, and Pleasure)
 aphrodite = AssistantAgent(
@@ -373,6 +349,10 @@ dionysus = AssistantAgent(
     """
     )
 
+######################################
+# Meta & Experience Gods and Goddesses
+######################################
+
 # 12. Knowledge Decay - Chronos (Personification of Time and Aging)
 chronos = AssistantAgent(
     "Chronos",
@@ -401,7 +381,11 @@ chronos = AssistantAgent(
     """
     )
 
-# Create Harmonia for summary
+######################################
+# Summarization & Organization Goddess
+######################################
+
+# 13. Summarization - Harmonia (Goddess of Harmony, Balance, and Concord)
 harmonia = AssistantAgent(
     "Harmonia",
     model_client=model_client,
@@ -434,22 +418,59 @@ harmonia = AssistantAgent(
     """
 )
 
-## Code from previous example
-#
+###################################
+# AutoGen functions and definitions
+###################################
+
 # Define a termination condition that stops the task if a special phrase is mentioned
-#text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
+text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
 
 # Create a team with all the Greek gods and goddesses
-#greek_pantheon_team = RoundRobinGroupChat(
-#    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos], 
-#    termination_condition=text_termination
-#)
+greek_pantheon_team = RoundRobinGroupChat(
+    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+    termination_condition=text_termination
+)
 
-# Run the agent and stream the messages to the console
-#async def main() -> None:
-#    await Console(greek_pantheon_team.run_stream(
-#        task="""Review the following technical documentation for our new API:
-#        """
+##########################
+# Custom class definitions
+##########################
+
+# GitHub interaction class
+class GitHubPRHandler:
+    def __init__(self, token: str, repo_name: str, pr_number: int):
+        self.github = Github(token)
+        self.repo = self.github.get_repo(repo_name)
+        self.pr = self.repo.get_pull(pr_number)
+        
+    def get_pr_files(self) -> List[Tuple[str, str]]:
+        """Get files changed in the PR with their content"""
+        files = []
+        for file in self.pr.get_files():
+            if file.status != "removed":
+                content = self.repo.get_contents(file.filename, ref=self.pr.head.sha).decoded_content.decode('utf-8')
+                files.append((file.filename, content))
+        return files
+    
+    def get_pr_diff(self) -> str:
+        """Get the full diff of the PR"""
+        diff = []
+        for file in self.pr.get_files():
+            if hasattr(file, 'patch') and file.patch:  # Not all files have a patch (e.g., binary files)
+                diff.append(f"--- {file.filename}\n{file.patch}")
+        return "\n".join(diff)
+
+    def add_review_comment(self, path: str, position: int, body: str):
+        """Add a review comment to the PR at the specified position"""
+        self.pr.create_review_comment(body=body, commit_id=self.pr.head.sha, path=path, position=position)
+    
+    def submit_review(self, comments: List[Dict], review_body: str):
+        """Submit a full review with multiple comments"""
+        self.pr.create_review(
+            commit_id=self.pr.head.sha,
+            body=review_body,
+            event="COMMENT",
+            comments=comments
+        )
 
 # Helper class for parsing deity comments and mapping to GitHub PR locations
 class DeityCommentParser:
@@ -497,20 +518,20 @@ class PRPantheonReviewChat:
         
         task = f"""Review the following code changes from a GitHub Pull Request:
 
-DIFF:
-```diff
-{diff}
-```
+        DIFF:
+        ```diff
+        {diff}
+        ```
 
-FILE CONTENTS:
-{file_contents}
+        FILE CONTENTS:
+        {file_contents}
 
-Please review these changes according to your divine domain of expertise.
-IMPORTANT: When referring to specific code, please include the filename and line number in this format:
-[SECTION: filename:line_number]
+        Please review these changes according to your divine domain of expertise.
+        IMPORTANT: When referring to specific code, please include the filename and line number in this format:
+        [SECTION: filename:line_number]
 
-Your feedback should be specific, constructive, and actionable.
-"""
+        Your feedback should be specific, constructive, and actionable.
+        """
         
         # Collect feedback from each reviewer
         review_feedback = []
@@ -525,33 +546,37 @@ Your feedback should be specific, constructive, and actionable.
         summary_context = "\n\n".join(review_feedback)
         
         summary_request = f"""
-I need you to generate a comprehensive summary report of all the feedback provided by the divine reviewers on this Pull Request.
+        I need you to generate a comprehensive summary report of all the feedback provided by the divine reviewers on this Pull Request.
 
-Here is all the feedback from the divine pantheon:
+        Here is all the feedback from the divine pantheon:
 
-{summary_context}
+        {summary_context}
 
-Please organize the feedback by file and line number, format it as comments that can be posted to GitHub, 
-and ensure each piece of feedback is attributed to the appropriate deity with their domain.
+        Please organize the feedback by file and line number, format it as comments that can be posted to GitHub, 
+        and ensure each piece of feedback is attributed to the appropriate deity with their domain.
 
-FORMAT EACH COMMENT LIKE THIS:
-/* 
- * [SECTION: filename:line_number] 
- * [DEITY: Deity name (Domain)]
- * [SCORE: 0-100] 
- * 
- * Feedback details...
- */
+        FORMAT EACH COMMENT LIKE THIS:
+        /* 
+        * [SECTION: filename:line_number] 
+        * [DEITY: Deity name (Domain)]
+        * [SCORE: 0-100] 
+        * 
+        * Feedback details...
+        */
 
-Group related feedback by file, and within each file by line number.
-"""
-        
+        Group related feedback by file, and within each file by line number.
+        """
+                
         summary_message = await self.summary_agent.aask(summary_request)
 
-        
         print(f"Harmonia has completed the summary.")
         return summary_message
     
+
+###################
+# Python functions
+###################
+
 # Main function to run the GitHub Action
 async def main():
     # Get GitHub action inputs
@@ -562,12 +587,8 @@ async def main():
     # Initialize GitHub handler
     pr_handler = GitHubPRHandler(github_token, repository, pr_number)
     
-    # Define your reviewer agents (excluding harmonia)
-    reviewer_agents = [apollo, hermes, athena, hestia, mnemosyne, hephaestus, 
-                    heracles, demeter, aphrodite, iris, dionysus, chronos]
-    
     # Create the pantheon review chat
-    pantheon_review = PRPantheonReviewChat(reviewer_agents, harmonia)
+    pantheon_review = PRPantheonReviewChat(greek_pantheon_team)
     
     # Run the review
     review_summary = await pantheon_review.review_pr(pr_handler)
@@ -595,9 +616,10 @@ async def main():
         with open(step_summary_path, "w", encoding="utf-8") as f:
             f.write("# Divine Pantheon Review Summary\n\n")
             f.write(review_summary)
-    
-    # Close the model client
+
+    # Close the connection to the model client
     await model_client.close()
+    
 
 # Entry point for the GitHub Action
 if __name__ == "__main__":
