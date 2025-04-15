@@ -1,8 +1,10 @@
 import asyncio
 from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.ui import Console
 from autogen_core import CancellationToken
 from autogen_ext.models.openai import OpenAIChatCompletionClient
+from autogen_agentchat.conditions import TextMentionTermination
 from autogen_agentchat.messages import TextMessage
 import os
 import re
@@ -421,16 +423,16 @@ harmonia = AssistantAgent(
 ###################################
 
 # Define a termination condition that stops the task if a special phrase is mentioned
-#text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
+text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
 
 # Create a team with all the Greek gods and goddesses
-#greek_pantheon_team = RoundRobinGroupChat(
-#    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
-#    termination_condition=text_termination
-#)
+greek_pantheon_team = RoundRobinGroupChat(
+    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+    termination_condition=text_termination
+)
 
 # Define your reviewer agents (excluding harmonia)
-greek_pantheon_team = [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos]
+#greek_pantheon_team = [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos]
 
 ##########################
 # Custom class definitions
@@ -592,34 +594,62 @@ async def main():
     pr_handler = GitHubPRHandler(github_token, repository, pr_number)
     
     # Create the pantheon review chat
-    pantheon_review = PRPantheonReviewChat(greek_pantheon_team, harmonia)
+    #pantheon_review = PRPantheonReviewChat(greek_pantheon_team, harmonia)
 
-    # Run the review
-    review_summary = await pantheon_review.review_pr(pr_handler)
+    # Run the divine review - v1
+    #review_summary = await pantheon_review.review_pr(pr_handler)
     
+    # Run the divine review - v2
+
+    ## Get PR files and diff
+    files = pr_handler.get_pr_files()
+    diff = pr_handler.get_pr_diff()
+    
+    ## Build review task context
+    file_contents = "\n\n".join([f"## File: {filename}\n```\n{content}\n```" for filename, content in files])
+    
+    await Console(greek_pantheon_team.run_stream(
+    task = f"""Review the following code changes from a GitHub Pull Request:
+
+    DIFF:
+    ```diff
+    {diff}
+    ```
+
+    FILE CONTENTS:
+    {file_contents}
+
+    Please review these changes according to your divine domain of expertise.
+    IMPORTANT: When referring to specific code, please include the filename and line number in this format:
+    [SECTION: filename:line_number]
+
+    Your feedback should be specific, constructive, and actionable.
+    """
+    ))
+
     # Parse the review comments
-    comment_parser = DeityCommentParser()
-    parsed_comments = comment_parser.parse_comment(review_summary)
+    #comment_parser = DeityCommentParser()
+    #parsed_comments = comment_parser.parse_comment(review_summary)
     
     # Post comments to GitHub PR
-    github_comments = []
-    for comment in parsed_comments:
-        github_comments.append({
-            "path": comment["path"],
-            "position": comment["line"],
-            "body": f"### [{comment['deity']} - {comment['domain']}]\n\n{comment['feedback']}"
-        })
+    #github_comments = []
+    #for comment in parsed_comments:
+        #github_comments.append({
+            #"path": comment["path"],
+            #"position": comment["line"],
+            #"body": f"### [{comment['deity']} - {comment['domain']}]\n\n{comment['feedback']}"
+       # })
     
     # Submit the review with all comments
-    harmonia_summary = "# Divine Pantheon Review\n\nThe council of divine reviewers has completed their assessment of this Pull Request."
-    pr_handler.submit_review(github_comments, harmonia_summary)
+    #harmonia_summary = "# Divine Pantheon Review\n\nThe council of divine reviewers has completed their assessment of this Pull Request."
+    #pr_handler.submit_review(github_comments, harmonia_summary)
 
     # Write Harmonia's review summary to the GitHub Step Summary
-    step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if step_summary_path:
-        with open(step_summary_path, "w", encoding="utf-8") as f:
-            f.write("# Divine Pantheon Review Summary\n\n")
-            f.write(review_summary)
+    #step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    #if step_summary_path:
+        #with open(step_summary_path, "w", encoding="utf-8") as f:
+            #f.write("# Divine Pantheon Review Summary\n\n")
+            #f.write(review_summary)
 
     # Close the connection to the model client
     await model_client.close()
