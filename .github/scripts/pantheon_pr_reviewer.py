@@ -455,8 +455,8 @@ def get_pr_details(repository: str, pr_number: int, github_token: str) -> Dict[s
         'pr_obj': pr
     }
 
-# PR diff grabber
-def get_diff(self, pr_details: Dict[str, Any], event_data: Dict[str, Any] = None) -> str:
+# PR diff grabber    
+def get_diff(pr_details: Dict[str, Any], event_data: Dict[str, Any] = None) -> str:
     """Get the diff content based on the event type."""
     if event_data and event_data.get('action') == 'synchronize':
         # For synchronize events, compare the before and after commits
@@ -472,7 +472,7 @@ def get_diff(self, pr_details: Dict[str, Any], event_data: Dict[str, Any] = None
         return pr_obj.diff
 
 # PR diff parser
-def parse_diff(self, diff_content: str) -> List[Dict[str, Any]]:
+def parse_diff(diff_content: str) -> List[Dict[str, Any]]:
     """Parse the diff content into files and chunks."""
     patch_set = unidiff.PatchSet(diff_content.splitlines())
     parsed_files = []
