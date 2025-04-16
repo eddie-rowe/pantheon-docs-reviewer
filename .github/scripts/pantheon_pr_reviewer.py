@@ -429,18 +429,30 @@ harmonia = AssistantAgent(
 #############################
 
 # Github PR diff fetcher
-def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
+def fetch_pr_content(repo_name: str, pr_number: int, github_token: str, excluded_patterns: list = None) -> str:
     """
-    Fetches the PR content from GitHub.
+    Fetches the PR content from GitHub, excluding certain files.
     
     Args:
         repo_name: The name of the repository in the format 'owner/repo'
         pr_number: The PR number to fetch
         github_token: GitHub token for authentication
+        excluded_patterns: List of regex patterns for files to exclude
         
     Returns:
         The formatted content of the PR diff
     """
+    if excluded_patterns is None:
+        excluded_patterns = [
+            r'\.lock$',           # Lock files
+            r'package-lock\.json$',  # NPM lock files
+            r'\.min\.(js|css)$',  # Minified files
+            r'.*\.(png|jpg|jpeg|gif|svg|ico|ttf|woff|woff2|eot)$',  # Binary and asset files
+            r'\.gitignore$',      # Git config files
+            r'\.github/.*',       # GitHub config files
+            r'node_modules/.*'    # Node modules directory
+        ]
+    
     try:
         # Initialize GitHub client
         g = Github(github_token)
@@ -460,10 +472,27 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
         if len(files_changed) == 0:
             return "No files were changed in this PR."
         
+        # Track processed and excluded files for reporting
+        processed_files = []
+        excluded_files = []
+        
         # Format the content into a readable diff format
         formatted_content = ""
         for file in files_changed:
+            # Check if file should be excluded
+            should_exclude = False
+            for pattern in excluded_patterns:
+                if re.search(pattern, file.filename):
+                    excluded_files.append(file.filename)
+                    should_exclude = True
+                    break
+            
+            if should_exclude:
+                print(f"Excluding file: {file.filename} (matches exclusion pattern)")
+                continue
+                
             print(f"Processing file: {file.filename} (Status: {file.status})")
+            processed_files.append(file.filename)
             
             # Skip binary files and removed files
             if file.status == "removed" or file.patch is None:
@@ -501,9 +530,23 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
                     print(error_msg)
                     formatted_content += error_msg
         
+        # Add summary of processed vs excluded files
+        summary = f"\n\n## PR Review Summary\n"
+        summary += f"- Total files in PR: {len(files_changed)}\n"
+        summary += f"- Files processed: {len(processed_files)}\n"
+        summary += f"- Files excluded: {len(excluded_files)}\n\n"
+        
+        if excluded_files:
+            summary += "### Excluded Files:\n"
+            for file in excluded_files:
+                summary += f"- {file}\n"
+            summary += "\n"
+        
+        formatted_content = summary + formatted_content
+        
         print(f"Completed processing PR content, total size: {len(formatted_content)} characters")
-        if len(formatted_content) == 0:
-            return "Could not extract any content from the PR files."
+        if len(processed_files) == 0:
+            return "No files were included for review after applying exclusion patterns."
             
         return formatted_content
         
@@ -679,47 +722,38 @@ async def main() -> None:
     #formatted_content = fetch_pr_content(repository, pr_number, github_token)
     #print(formatted_content)
 
-# Example diff
-    formatted_content = """
-### File: .github/scripts/pantheon_pr_reviewer.py
-Status: modified
-```diff
-@@ -1,53 +1,34 @@
-import asyncio
-from autogen_agentchat.agents import AssistantAgent
--from autogen_agentchat.base import TaskResult
--from autogen_agentchat.conditions import ExternalTermination, TextMentionTermination
-from autogen_agentchat.teams import RoundRobinGroupChat
-from autogen_agentchat.ui import Console
-from autogen_core import CancellationToken
-from autogen_ext.models.openai import OpenAIChatCompletionClient
-+from autogen_agentchat.conditions import TextMentionTermination
-+from autogen_agentchat.messages import TextMessage
-import os
-import re
-+import json
-from github import Github
-from typing import Dict, List, Tuple, Optional
+    # Define patterns for files to exclude from the review
+    excluded_patterns = [
+        r'\.lock$',              # Lock files
+        r'package-lock\.json$',  # NPM lock files
+        r'\.min\.(js|css)$',     # Minified files
+        r'.*\.(png|jpg|jpeg|gif|svg|ico|ttf|woff|woff2|eot)$',  # Binary and asset files
+        r'\.gitignore$',         # Git config files
+        r'yarn\.lock$',          # Yarn lock files
+        r'\.github/.*',          # GitHub config files
+        r'node_modules/.*',      # Node modules directory
+        r'dist/.*',              # Distribution directories
+        r'build/.*',             # Build directories
+        r'\.env.*',              # Environment files
+        r'\.DS_Store$',          # macOS files
+        r'.*\.test\.js$',        # Test files (customize as needed)
+        r'.*\.spec\.js$',        # Spec files
+        r'__tests__/.*',         # Test directories
+        r'.*\.(py|ts|sh)$',      # script files
+        r'.*\.(json|yaml|yml)$', # data files
+        # Add any other patterns you want to exclude
+    ]
+    
+    # You might also want to allow configuration via environment variables
+    env_exclude_patterns = os.environ.get("INPUT_EXCLUDE_PATTERNS", "")
+    if env_exclude_patterns:
+        # Allow comma-separated list of patterns from environment
+        additional_patterns = [p.strip() for p in env_exclude_patterns.split(",")]
+        excluded_patterns.extend(additional_patterns)
 
-# Submit the review with all comments
-harmonia_summary = "# Divine Pantheon Review\n\nThe council of divine reviewers has completed their assessment of this Pull Request."
-pr_handler.submit_review(github_comments, harmonia_summary)
-
-# Write Harmonia's review summary to the GitHub Step Summary
-step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-if step_summary_path:
-    with open(step_summary_path, "w", encoding="utf-8") as f:
-        f.write("# Divine Pantheon Review Summary\n\n")
-        f.write(review_summary)
-
-# Close the model client
-await model_client.close()
-
-# Entry point for the GitHub Action
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-    """
+    # Fetch the PR content with exclusions
+    print(f"Fetching content for PR #{pr_number} in repository {repository}")
+    formatted_content = fetch_pr_content(repository, pr_number, github_token, excluded_patterns)
 
     # Define a termination condition that stops the task if a special phrase is mentioned
     text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
