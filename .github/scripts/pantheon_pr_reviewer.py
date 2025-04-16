@@ -13,7 +13,7 @@ import os
 import re
 import json
 from github import Github
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Any, Tuple, Optional
 
 ####################
 # GitHub definitions
