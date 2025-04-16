@@ -691,53 +691,45 @@ async def main() -> None:
         termination_condition=text_termination
     )
 
-    all_responses = []
-    # Process each file individually
-    print("Starting review process of each file in PR diff with divine pantheon...")
-    for filename, content in files_content.items():
-        print(f"Processing file: {filename}")
-        
-        task = f"""Your task is to review the following file from a pull request according to your divine domain of expertise. Instructions:
-        - Respond in the following JSON format:
+    # Create the task for each deity to perform
+    task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
+    - Respond in the following JSON format:
+    {{
+    "inlineReviews": [
         {{
-        "inlineReviews": [
-            {{
-            "filename": "{filename}",
-            "lineNumber": <line_number>,
-            "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
-            }}
-        ],
-        "generalReviews": [
-            {{
-            "filename": "{filename}",
-            "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
-            }}
-        ]
+        "filename": "<filename>",
+        "lineNumber": <line_number>,
+        "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
         }}
-        - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
-        - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
-        - Do NOT wrap the output in triple backticks or any markdown.
-        - DO NOT include explanations or extra commentary.
-        - All comments should reflect your unique personality and domain.
-        - Do not give positive comments or compliments.
-        - Write the comment in GitHub Markdown format.
-        - IMPORTANT: NEVER suggest adding comments to the code.
+    ],
+    "generalReviews": [
+        {{
+        "filename": "<filename>",
+        "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
+        }}
+    ]
+    }}
+    - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
+    - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
+    - Do NOT wrap the output in triple backticks or any markdown.
+    - DO NOT include explanations or extra commentary.
+    - All comments should reflect your unique personality and domain.
+    - Do not give positive comments or compliments.
+    - Write the comment in GitHub Markdown format.
+    - IMPORTANT: NEVER suggest adding comments to the code.
 
-        Review the following code:
-        
-        {content}
+    Review the following code diff:
+    {files_content}
 
-        Your feedback should be specific, constructive, and actionable.
-        """
-        
-        # Process this file
-        divine_responses = await greek_pantheon_team.run(task=task)
-        all_responses.append(divine_responses)
-        
-        print(f"Completed review of {filename}")
+    Your feedback should be specific, constructive, and actionable.
+    """
+
+    # Run the review
+    print("Starting review process with divine pantheon...")
+    divine_responses = await greek_pantheon_team.run(task=task)
 
     # Parse responses into inline + general comments
-    inline_reviews, general_reviews = parse_task_result_for_reviews(all_responses)
+    inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
 
     # Print the parsed results for debugging
     print("\n Inline Comments:")
