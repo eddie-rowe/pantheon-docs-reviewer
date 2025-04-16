@@ -41,6 +41,22 @@ jobs:
       #    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       #    OPENAI_API_MODEL: "gpt-4-1106-preview"
       #    exclude: "yarn.lock,dist/**"
+
+      #- name: Apollo
+      #  uses: eddie-rowe/pantheon-docs-reviewer@main
+      #  with:
+      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      #    OPENAI_API_MODEL: "gpt-4-1106-preview"
+      #    exclude: "yarn.lock,dist/**"
+
+      #- name: Hermes
+      #  uses: eddie-rowe/pantheon-docs-reviewer@main
+      #  with:
+      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      #    OPENAI_API_MODEL: "gpt-4-1106-preview"
+      #    exclude: "yarn.lock,dist/**"
       
       - name: Run Pantheon Review
         env:

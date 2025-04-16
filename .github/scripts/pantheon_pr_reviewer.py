@@ -429,30 +429,18 @@ harmonia = AssistantAgent(
 #############################
 
 # Github PR diff fetcher
-def fetch_pr_content(repo_name: str, pr_number: int, github_token: str, excluded_patterns: list = None) -> str:
+def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
     """
-    Fetches the PR content from GitHub, excluding certain files.
+    Fetches the PR content from GitHub.
     
     Args:
         repo_name: The name of the repository in the format 'owner/repo'
         pr_number: The PR number to fetch
         github_token: GitHub token for authentication
-        excluded_patterns: List of regex patterns for files to exclude
         
     Returns:
         The formatted content of the PR diff
     """
-    if excluded_patterns is None:
-        excluded_patterns = [
-            r'\.lock$',           # Lock files
-            r'package-lock\.json$',  # NPM lock files
-            r'\.min\.(js|css)$',  # Minified files
-            r'.*\.(png|jpg|jpeg|gif|svg|ico|ttf|woff|woff2|eot)$',  # Binary and asset files
-            r'\.gitignore$',      # Git config files
-            r'\.github/.*',       # GitHub config files
-            r'node_modules/.*'    # Node modules directory
-        ]
-    
     try:
         # Initialize GitHub client
         g = Github(github_token)
@@ -472,27 +460,10 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str, excluded
         if len(files_changed) == 0:
             return "No files were changed in this PR."
         
-        # Track processed and excluded files for reporting
-        processed_files = []
-        excluded_files = []
-        
         # Format the content into a readable diff format
         formatted_content = ""
         for file in files_changed:
-            # Check if file should be excluded
-            should_exclude = False
-            for pattern in excluded_patterns:
-                if re.search(pattern, file.filename):
-                    excluded_files.append(file.filename)
-                    should_exclude = True
-                    break
-            
-            if should_exclude:
-                print(f"Excluding file: {file.filename} (matches exclusion pattern)")
-                continue
-                
             print(f"Processing file: {file.filename} (Status: {file.status})")
-            processed_files.append(file.filename)
             
             # Skip binary files and removed files
             if file.status == "removed" or file.patch is None:
@@ -530,23 +501,9 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str, excluded
                     print(error_msg)
                     formatted_content += error_msg
         
-        # Add summary of processed vs excluded files
-        summary = f"\n\n## PR Review Summary\n"
-        summary += f"- Total files in PR: {len(files_changed)}\n"
-        summary += f"- Files processed: {len(processed_files)}\n"
-        summary += f"- Files excluded: {len(excluded_files)}\n\n"
-        
-        if excluded_files:
-            summary += "### Excluded Files:\n"
-            for file in excluded_files:
-                summary += f"- {file}\n"
-            summary += "\n"
-        
-        formatted_content = summary + formatted_content
-        
         print(f"Completed processing PR content, total size: {len(formatted_content)} characters")
-        if len(processed_files) == 0:
-            return "No files were included for review after applying exclusion patterns."
+        if len(formatted_content) == 0:
+            return "Could not extract any content from the PR files."
             
         return formatted_content
         
@@ -718,42 +675,53 @@ async def main() -> None:
         return
 
     # Fetch the PR content
-    #print(f"Fetching content for PR #{pr_number} in repository {repository}")
-    #formatted_content = fetch_pr_content(repository, pr_number, github_token)
-    #print(formatted_content)
-
-    # Define patterns for files to exclude from the review
-    excluded_patterns = [
-        r'\.lock$',              # Lock files
-        r'package-lock\.json$',  # NPM lock files
-        r'\.min\.(js|css)$',     # Minified files
-        r'.*\.(png|jpg|jpeg|gif|svg|ico|ttf|woff|woff2|eot)$',  # Binary and asset files
-        r'\.gitignore$',         # Git config files
-        r'yarn\.lock$',          # Yarn lock files
-        r'\.github/.*',          # GitHub config files
-        r'node_modules/.*',      # Node modules directory
-        r'dist/.*',              # Distribution directories
-        r'build/.*',             # Build directories
-        r'\.env.*',              # Environment files
-        r'\.DS_Store$',          # macOS files
-        r'.*\.test\.js$',        # Test files (customize as needed)
-        r'.*\.spec\.js$',        # Spec files
-        r'__tests__/.*',         # Test directories
-        r'.*\.(py|ts|sh)$',      # script files
-        r'.*\.(json|yaml|yml)$', # data files
-        # Add any other patterns you want to exclude
-    ]
-    
-    # You might also want to allow configuration via environment variables
-    env_exclude_patterns = os.environ.get("INPUT_EXCLUDE_PATTERNS", "")
-    if env_exclude_patterns:
-        # Allow comma-separated list of patterns from environment
-        additional_patterns = [p.strip() for p in env_exclude_patterns.split(",")]
-        excluded_patterns.extend(additional_patterns)
-
-    # Fetch the PR content with exclusions
     print(f"Fetching content for PR #{pr_number} in repository {repository}")
-    formatted_content = fetch_pr_content(repository, pr_number, github_token, excluded_patterns)
+    pr_diff_content = fetch_pr_content(repository, pr_number, github_token)
+    print(pr_diff_content)
+
+# Example diff
+    formatted_content = """
+    --- README.md
+
+    # Divine Pantheon GitHub PR Reviewer
+
+    This GitHub Action combines the power of an autogen "pantheon" of specialized AI reviewers with GitHub's PR review capabilities. Each "deity" reviewer specializes in a different aspect of code quality and provides tailored feedback directly on your pull requests.
+
+    ## Features
+
+    - **Specialized Review Domains**: Each AI reviewer (deity) focuses on a specific aspect of code quality:
+    - **Apollo**: Style guide adherence and code aesthetics
+    - **Hermes**: Readability and communication clarity
+    - **Athena**: Cognitive load reduction and code complexity
+    - **Hestia**: Documentation structure and organization
+    - **Mnemosyne**: Context completeness
+    - **Hephaestus**: Code accuracy and functionality
+    - **Heracles**: Cross-linking and code relationships
+    - **Demeter**: Terminology consistency
+    - **Aphrodite**: Code formatting and visual presentation
+    - **Iris**: Accessibility
+    - **Dionysus**: Visual aid suggestions
+    - **Chronos**: Knowledge decay and outdated patterns
+
+    - **Harmonious Summary**: Harmonia provides an integrated review summary combining all feedback
+
+    - **In-line PR Comments**: Each reviewer's feedback is added as in-line comments at the relevant locations in your code
+
+    ## Setup Instructions
+
+    ### 1. Add the workflow file
+
+    Create a file `.github/workflows/pantheon-review.yml` in your repository with the content from the provided workflow YAML.
+
+    ### 2. Add the pantheon reviewer script
+
+    Save the provided Python script as `pantheon_pr_reviewer.py` in your repository.
+
+    ### 3. Set up secrets
+
+    Add the following secrets to your GitHub repository:
+    - `OPENAI_API_KEY`: Your OpenAI API key
+    """
 
     # Define a termination condition that stops the task if a special phrase is mentioned
     text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
@@ -792,7 +760,7 @@ async def main() -> None:
     - IMPORTANT: NEVER suggest adding comments to the code.
 
     Review the following code diff:
-    {formatted_content}
+    {pr_diff_content}
 
     Your feedback should be specific, constructive, and actionable.
     """
