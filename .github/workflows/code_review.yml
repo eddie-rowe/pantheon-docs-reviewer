@@ -32,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install openai tiktoken PyGithub autogen-agentchat autogen-core autogen-ext[openai,azure]
+          pip install openai tiktoken PyGithub autogen-agentchat autogen-core autogen-ext[openai,azure] unidiff
 
       #- name: Code Review
       #  uses: freeedcom/ai-codereviewer@main
