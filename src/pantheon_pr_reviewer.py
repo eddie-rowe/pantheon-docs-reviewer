@@ -1,53 +1,34 @@
 import asyncio
 from autogen_agentchat.agents import AssistantAgent
-from autogen_agentchat.base import TaskResult
-from autogen_agentchat.conditions import ExternalTermination, TextMentionTermination
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.ui import Console
 from autogen_core import CancellationToken
 from autogen_ext.models.openai import OpenAIChatCompletionClient
+from autogen_agentchat.conditions import TextMentionTermination
+from autogen_agentchat.messages import TextMessage
 import os
 import re
+import json
 from github import Github
 from typing import Dict, List, Tuple, Optional
 
-# GitHub interaction class
-class GitHubPRHandler:
-    def __init__(self, token: str, repo_name: str, pr_number: int):
-        self.github = Github(token)
-        self.repo = self.github.get_repo(repo_name)
-        self.pr = self.repo.get_pull(pr_number)
-        
-    def get_pr_files(self) -> List[Tuple[str, str]]:
-        """Get files changed in the PR with their content"""
-        files = []
-        for file in self.pr.get_files():
-            if file.status != "removed":
-                content = self.repo.get_contents(file.filename, ref=self.pr.head.sha).decoded_content.decode('utf-8')
-                files.append((file.filename, content))
-        return files
-    
-    def get_pr_diff(self) -> str:
-        """Get the full diff of the PR"""
-        return self.pr.diff()
-    
-    def add_review_comment(self, path: str, position: int, body: str):
-        """Add a review comment to the PR at the specified position"""
-        self.pr.create_review_comment(body=body, commit_id=self.pr.head.sha, path=path, position=position)
-    
-    def submit_review(self, comments: List[Dict], review_body: str):
-        """Submit a full review with multiple comments"""
-        self.pr.create_review(
-            commit_id=self.pr.head.sha,
-            body=review_body,
-            event="COMMENT",
-            comments=comments
-        )
+####################
+# GitHub definitions
+####################
+
+# Get GitHub action inputs
+github_token = os.environ["INPUT_GITHUB_TOKEN"]
+repository = os.environ["GITHUB_REPOSITORY"]
+pr_number = int(os.environ["INPUT_PR_NUMBER"])
+
+###################################
+# AutoGen model client definitions
+###################################
 
 # Create an OpenAI model client
 model_client = OpenAIChatCompletionClient(
     model="gpt-4o-2024-08-06",
-    # api_key is taken from environment variable OPENAI_API_KEY
+    # api_key is taken from GitHub repository secret variable OPENAI_API_KEY
 )
 
 ######################################
@@ -201,6 +182,10 @@ mnemosyne = AssistantAgent(
     """
     )
 
+###########################################
+# Accuracy & Consistency Gods and Goddesses
+###########################################
+
 # 6. Code Accuracy - Hephaestus (God of Craftsmen, Artisans, and Blacksmiths)
 hephaestus = AssistantAgent(
     "Hephaestus",
@@ -284,6 +269,10 @@ demeter = AssistantAgent(
     Assume high standards for production code. Output the score in the following format: "SCORE: [0-100]".
     """
     )
+
+#############################################
+# Presentation & Structure Gods and Goddesses
+#############################################
 
 # 9. Formatting - Aphrodite (Goddess of Beauty, Love, and Pleasure)
 aphrodite = AssistantAgent(
@@ -369,6 +358,10 @@ dionysus = AssistantAgent(
     """
     )
 
+######################################
+# Meta & Experience Gods and Goddesses
+######################################
+
 # 12. Knowledge Decay - Chronos (Personification of Time and Aging)
 chronos = AssistantAgent(
     "Chronos",
@@ -397,7 +390,11 @@ chronos = AssistantAgent(
     """
     )
 
-# Create Harmonia for summary
+######################################
+# Summarization & Organization Goddess
+######################################
+
+# 13. Summarization - Harmonia (Goddess of Harmony, Balance, and Concord)
 harmonia = AssistantAgent(
     "Harmonia",
     model_client=model_client,
@@ -413,191 +410,355 @@ harmonia = AssistantAgent(
     - Identifying areas of consensus and divergence among the reviewers
     - Distilling feedback into clear, actionable comments for GitHub PR review
     - Ensuring all feedback is properly attributed to the deity who provided it
-
-    Your summary report should be formatted as:
-    /* 
-    * [DEITY: Deity name (Domain)]
-    * [SCORE: 0-100] 
-    * 
-    * Feedback details...
-    */
+    - Ensure the summary report contains the respective information from all 12 divine reviewers
 
     End your summary with a statement about the harmony (or lack thereof) among the divine perspectives, 
     such as "The divine chorus offers a balanced harmony of perspectives, though several competing melodies 
     require resolution before perfection can be achieved."
 
+    Finally, at the bottom of your review, score the overall code quality on a scale of 0-100, where 100 is perfect harmony between reviewers.
+    Assume high standards for production code. Output the score in the following format: "SCORE: [0-100]".
+
     Once the summary is complete, please conclude with 'DOCUMENTATION REVIEW COMPLETE'.
     """
 )
 
-## Code from previous example
-#
-# Define a termination condition that stops the task if a special phrase is mentioned
-#text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
 
-# Create a team with all the Greek gods and goddesses
-#greek_pantheon_team = RoundRobinGroupChat(
-#    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos], 
-#    termination_condition=text_termination
-#)
+#############################
+# Helper function definitions
+#############################
 
-# Run the agent and stream the messages to the console
-#async def main() -> None:
-#    await Console(greek_pantheon_team.run_stream(
-#        task="""Review the following technical documentation for our new API:
-#        """
-
-# Helper class for parsing deity comments and mapping to GitHub PR locations
-class DeityCommentParser:
-    @staticmethod
-    def parse_comment(comment: str) -> Dict:
-        """Parse a deity comment to extract path, line number, and content"""
-        # Pattern to match: /* [SECTION: file_path:line_number] [DEITY: Name (Domain)] */
-        pattern = r"/\*\s*\[SECTION:\s*([^:]+):(\d+)\]\s*\[DEITY:\s*([^(]+)\s*\(([^)]+)\)\]\s*\*/(.*?)(?=/\*|$)"
-        matches = re.findall(pattern, comment, re.DOTALL)
+# Github PR diff fetcher
+def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> Dict[str, str]:
+    """
+    Fetches the PR content from GitHub.
+    
+    Args:
+        repo_name: The name of the repository in the format 'owner/repo'
+        pr_number: The PR number to fetch
+        github_token: GitHub token for authentication
         
-        parsed_comments = []
-        for match in matches:
-            if len(match) >= 5:
-                file_path = match[0].strip()
-                line_number = int(match[1])
-                deity_name = match[2].strip()
-                deity_domain = match[3].strip()
-                feedback = match[4].strip()
+    Returns:
+        Dictionary mapping filenames to their content
+    """
+    try:
+        # Initialize GitHub client
+        g = Github(github_token)
+        
+        # Get the repository
+        repo = g.get_repo(repo_name)
+        print(f"Successfully connected to repository: {repo_name}")
+        
+        # Get the pull request
+        pull_request = repo.get_pull(pr_number)
+        print(f"Found PR #{pr_number}: {pull_request.title}")
+        
+        # Get the files changed in the PR
+        files_changed = list(pull_request.get_files())
+        print(f"PR contains {len(files_changed)} changed files")
+        
+        if len(files_changed) == 0:
+            return {"No files changed": "No files were changed in this PR."}
+        
+        # Create a dictionary to store file contents
+        files_content = {}
+        
+        for file in files_changed:
+            print(f"Processing file: {file.filename} (Status: {file.status})")
+            
+            # Skip binary files and removed files
+            if file.status == "removed" or file.patch is None:
+                print(f"Skipping file {file.filename}: status={file.status}, patch={file.patch is None}")
+                continue
                 
-                parsed_comments.append({
-                    "path": file_path,
-                    "line": line_number,
+            # Start with the diff information
+            file_content = f"### File: {file.filename}\n"
+            file_content += f"Status: {file.status}\n"
+            file_content += "```diff\n"
+            file_content += file.patch
+            file_content += "\n```\n"
+            
+            # If it's a new or modified file, also get the full content
+            if file.status in ["added", "modified"]:
+                try:
+                    full_file_content = repo.get_contents(file.filename, ref=pull_request.head.ref)
+                    print(f"Retrieved content for {file.filename}, size: {full_file_content.size} bytes")
+                    
+                    # Skip very large files
+                    if full_file_content.size > 1000000:  # 1MB limit
+                        file_content += f"\n### Full content of {file.filename} (truncated - file too large)\n"
+                    else:
+                        try:
+                            decoded_content = full_file_content.decoded_content.decode('utf-8')
+                            file_content += f"\n### Full content of {file.filename}:\n"
+                            file_content += "```\n"
+                            file_content += decoded_content
+                            file_content += "\n```\n"
+                        except UnicodeDecodeError:
+                            print(f"Could not decode {file.filename} as UTF-8, likely a binary file")
+                            file_content += f"\n### Full content of {file.filename} (binary file, content omitted)\n"
+                except Exception as e:
+                    error_msg = f"\nCould not get full content of {file.filename}: {str(e)}\n"
+                    print(error_msg)
+                    file_content += error_msg
+            
+            files_content[file.filename] = file_content
+        
+        print(f"Completed processing PR content, total files: {len(files_content)}")
+        if len(files_content) == 0:
+            return {"No valid files": "Could not extract any content from the PR files."}
+            
+        return files_content
+        
+    except Exception as e:
+        error_msg = f"Error fetching PR content: {str(e)}"
+        print(error_msg)
+        return {"Error": error_msg}   
+    
+# JSON parser
+def parse_task_result_for_reviews(task_result):
+    all_inline_comments = []
+    all_general_comments = []
+
+    for message in task_result.messages:
+        if message.source == "user":
+            continue  # skip the task prompt
+
+        try:
+            data = json.loads(message.content)
+            deity_name = message.source
+
+            for inline in data.get("inlineReviews", []):
+                all_inline_comments.append({
                     "deity": deity_name,
-                    "domain": deity_domain,
-                    "feedback": feedback
+                    "filename": inline["filename"],
+                    "lineNumber": inline["lineNumber"],
+                    "body": inline["reviewComment"]
                 })
+
+            for general in data.get("generalReviews", []):
+                all_general_comments.append({
+                    "deity": deity_name,
+                    "filename": general["filename"],
+                    "body": general["reviewComment"]
+                })
+
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Could not parse JSON from {message.source}: {e}")
+            continue
+
+    return all_inline_comments, all_general_comments
+
+# Github PR comment poster
+def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str, 
+                         inline_comments: List[Dict], general_comments: List[Dict]) -> None:
+    """
+    Posts comments to the GitHub PR.
+    
+    Args:
+        repo_name: The name of the repository in the format 'owner/repo'
+        pr_number: The PR number to post comments to
+        github_token: GitHub token for authentication
+        inline_comments: List of inline comments to post
+        general_comments: List of general comments to post
+    """
+    try:
+        # Initialize GitHub client
+        g = Github(github_token)
+        
+        # Get the repository
+        repo = g.get_repo(repo_name)
+        
+        # Get the pull request
+        pull_request = repo.get_pull(pr_number)
+        
+        # Post general comments as PR comments
+        for comment in general_comments:
+            deity_name = comment["deity"]
+            filename = comment["filename"]
+            body = comment["body"]
+            
+            full_comment = f"## {deity_name}'s Review of {filename}\n\n{body}"
+            pull_request.create_issue_comment(full_comment)
+            print(f"Posted general comment from {deity_name} for {filename}")
+        
+        # Post inline comments
+        # We need to get the latest commit to post review comments
+        latest_commit = list(pull_request.get_commits())[-1]
+        
+        # Group comments by filename to batch them
+        comments_by_file = {}
+        for comment in inline_comments:
+            filename = comment["filename"]
+            if filename not in comments_by_file:
+                comments_by_file[filename] = []
+            comments_by_file[filename].append(comment)
+        
+        # Create a review with all comments
+        review_comments = []
+        for filename, comments in comments_by_file.items():
+            for comment in comments:
+                deity_name = comment["deity"]
+                line_number = comment["lineNumber"]
+                body = comment["body"]
                 
-        return parsed_comments
-
-# Modified version of your PantheonReviewChat class
-class PRPantheonReviewChat:
-    def __init__(self, reviewers, summary_agent):
-        self.reviewers = reviewers
-        self.summary_agent = summary_agent
-        self.all_messages = []
+                # Try to get the file content to find the right position
+                try:
+                    file_content = repo.get_contents(filename, ref=pull_request.head.ref).decoded_content.decode('utf-8')
+                    lines = file_content.split('\n')
+                    
+                    # Ensure line_number is within bounds
+                    if line_number > 0 and line_number <= len(lines):
+                        review_comments.append({
+                            "path": filename,
+                            "position": line_number,  # This is simplified - GitHub API requires diff position
+                            "body": f"**{deity_name}**: {body}"
+                        })
+                except Exception as e:
+                    print(f"Error preparing comment for {filename}:{line_number}: {str(e)}")
+                    # Fall back to PR comment if we can't post an inline comment
+                    fallback_comment = f"**{deity_name}** comment for {filename} line {line_number}:\n\n{body}"
+                    pull_request.create_issue_comment(fallback_comment)
         
-    async def review_pr(self, pr_handler: GitHubPRHandler) -> str:
-        """Review a PR using the pantheon of reviewers"""
-        # Get PR files and diff
-        files = pr_handler.get_pr_files()
-        diff = pr_handler.get_pr_diff()
+        # Create the review if we have comments
+        if review_comments:
+            try:
+                pull_request.create_review(
+                    commit=latest_commit,
+                    comments=review_comments,
+                    event="COMMENT"
+                )
+                print(f"Posted {len(review_comments)} inline comments to PR")
+            except Exception as e:
+                print(f"Error posting review comments: {str(e)}")
+                # Fall back to issue comments
+                for comment in review_comments:
+                    fallback = f"**Inline Comment for {comment['path']}:{comment['position']}**\n\n{comment['body']}"
+                    pull_request.create_issue_comment(fallback)
         
-        # Build review task context
-        file_contents = "\n\n".join([f"## File: {filename}\n```\n{content}\n```" for filename, content in files])
+    except Exception as e:
+        print(f"Error posting comments to PR: {str(e)}")
+ 
+# Github connection tester
+def test_github_connection():
+    try:
+        g = Github(github_token)
         
-        task = f"""Review the following code changes from a GitHub Pull Request:
-
-DIFF:
-```diff
-{diff}
-```
-
-FILE CONTENTS:
-{file_contents}
-
-Please review these changes according to your divine domain of expertise.
-IMPORTANT: When referring to specific code, please include the filename and line number in this format:
-[SECTION: filename:line_number]
-
-Your feedback should be specific, constructive, and actionable.
-"""
+        # Try to access the repository only
+        print(f"Attempting to access repository: {repository}")
+        repo = g.get_repo(repository)
+        print(f"Repository exists. Full name: {repo.full_name}")
         
-        # Collect feedback from each reviewer
-        review_feedback = []
-        for reviewer in self.reviewers:
-            print(f"🔍 {reviewer.name} is reviewing the PR...")
-            response = await reviewer.generate_reply(
-                messages=[{"role": "user", "content": task}]
-            )
-            review_feedback.append(f"{reviewer.name}: {response.content}")
-            self.all_messages.append(response)
+        # Now try to access the PR
+        print(f"Attempting to access PR #{pr_number}")
+        pr = repo.get_pull(pr_number)
+        print(f"PR exists. Title: {pr.title}")
         
-        # Generate summary with Harmonia
-        print("\n\n---------- GENERATING DIVINE SUMMARY ----------\n")
-        summary_context = "\n\n".join(review_feedback)
+        # Try to list files in the PR
+        print("Attempting to list files in PR")
+        files = list(pr.get_files())
+        print(f"PR contains {len(files)} files")
         
-        summary_request = f"""
-I need you to generate a comprehensive summary report of all the feedback provided by the divine reviewers on this Pull Request.
+        return True
+    except Exception as e:
+        print(f"GitHub connection test failed at step: {e.__class__.__name__}")
+        print(f"Error details: {str(e)}")
+        return False
 
-Here is all the feedback from the divine pantheon:
-
-{summary_context}
-
-Please organize the feedback by file and line number, format it as comments that can be posted to GitHub, 
-and ensure each piece of feedback is attributed to the appropriate deity with their domain.
-
-FORMAT EACH COMMENT LIKE THIS:
-/* 
- * [SECTION: filename:line_number] 
- * [DEITY: Deity name (Domain)]
- * [SCORE: 0-100] 
- * 
- * Feedback details...
- */
-
-Group related feedback by file, and within each file by line number.
-"""
-        
-        summary_message = await self.summary_agent.generate_reply(
-            messages=[{"role": "user", "content": summary_request}]
-        )
-        
-        print(f"Harmonia has completed the summary.")
-        return summary_message.content
+####################
+# Python functions
+####################
 
 # Main function to run the GitHub Action
-async def main():
-    # Get GitHub action inputs
-    github_token = os.environ["INPUT_GITHUB_TOKEN"]
-    repository = os.environ["GITHUB_REPOSITORY"]
-    pr_number = int(os.environ["INPUT_PR_NUMBER"])
-    
-    # Initialize GitHub handler
-    pr_handler = GitHubPRHandler(github_token, repository, pr_number)
-    
-    # Define your reviewer agents (excluding harmonia)
-    reviewer_agents = [apollo, hermes, athena, hestia, mnemosyne, hephaestus, 
-                    heracles, demeter, aphrodite, iris, dionysus, chronos]
-    
-    # Create the pantheon review chat
-    pantheon_review = PRPantheonReviewChat(reviewer_agents, harmonia)
-    
-    # Run the review
-    review_summary = await pantheon_review.review_pr(pr_handler)
-    
-    # Parse the review comments
-    comment_parser = DeityCommentParser()
-    parsed_comments = comment_parser.parse_comment(review_summary)
-    
-    # Post comments to GitHub PR
-    github_comments = []
-    for comment in parsed_comments:
-        github_comments.append({
-            "path": comment["path"],
-            "position": comment["line"],
-            "body": f"### [{comment['deity']} - {comment['domain']}]\n\n{comment['feedback']}"
-        })
-    
-    # Submit the review with all comments
-    harmonia_summary = "# Divine Pantheon Review\n\nThe council of divine reviewers has completed their assessment of this Pull Request."
-    pr_handler.submit_review(github_comments, harmonia_summary)
+async def main() -> None:
 
-    # Write Harmonia's review summary to the GitHub Step Summary
-    step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if step_summary_path:
-        with open(step_summary_path, "w", encoding="utf-8") as f:
-            f.write("# Divine Pantheon Review Summary\n\n")
-            f.write(review_summary)
+    # Test Github connection
+    if not test_github_connection():
+        print("Exiting due to GitHub authentication/connection issues")
+        return
+
+    # Fetch the PR content as a dictionary of files
+    print(f"Fetching content for PR #{pr_number} in repository {repository}")
+    files_content = fetch_pr_content(repository, pr_number, github_token)
+    print(files_content)
+
+    # Define a termination condition that stops the task if a special phrase is mentioned
+    text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
+
+    # Create a team with all the Greek gods and goddesses
+    greek_pantheon_team = RoundRobinGroupChat(
+        [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+        termination_condition=text_termination
+    )
+
+    all_responses = []
+    # Process each file individually
+    print("Starting review process of each file in PR diff with divine pantheon...")
+    for filename, content in files_content.items():
+        print(f"Processing file: {filename}")
+        
+        task = f"""Your task is to review the following file from a pull request according to your divine domain of expertise. Instructions:
+        - Respond in the following JSON format:
+        {{
+        "inlineReviews": [
+            {{
+            "filename": "{filename}",
+            "lineNumber": <line_number>,
+            "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
+            }}
+        ],
+        "generalReviews": [
+            {{
+            "filename": "{filename}",
+            "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
+            }}
+        ]
+        }}
+        - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
+        - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
+        - Do NOT wrap the output in triple backticks or any markdown.
+        - DO NOT include explanations or extra commentary.
+        - All comments should reflect your unique personality and domain.
+        - Do not give positive comments or compliments.
+        - Write the comment in GitHub Markdown format.
+        - IMPORTANT: NEVER suggest adding comments to the code.
+
+        Review the following code:
+        
+        {content}
+
+        Your feedback should be specific, constructive, and actionable.
+        """
+        
+        # Process this file
+        divine_responses = await greek_pantheon_team.run(task=task)
+        all_responses.append(divine_responses)
+        
+        print(f"Completed review of {filename}")
+
+    # Parse responses into inline + general comments
+    inline_reviews, general_reviews = parse_task_result_for_reviews(all_responses)
+
+    # Print the parsed results for debugging
+    print("\n Inline Comments:")
+    for comment in inline_reviews:
+        print(comment)
+    print("\n General Summary Comments:")
+    for comment in general_reviews:
+        print(comment)
+
+    # Post comments to GitHub PR
+    print("Posting comments to GitHub PR...")
+    post_comments_to_pr(repository, pr_number, github_token, inline_reviews, general_reviews)
     
-    # Close the model client
+    # Print completion message
+    print("Documentation review process completed!")
+
+    # Close the connection to the model client
     await model_client.close()
 
+    
 # Entry point for the GitHub Action
 if __name__ == "__main__":
+    # Run the main process
     asyncio.run(main())
