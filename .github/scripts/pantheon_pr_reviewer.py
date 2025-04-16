@@ -469,7 +469,7 @@ def get_diff(pr_details: Dict[str, Any], event_data: Dict[str, Any] = None) -> s
     else:
         # For opened events or fallback
         pr_obj = pr_details['pr_obj']
-        return pr_obj.diff
+        return pr_obj.patch
 
 # PR diff parser
 def parse_diff(diff_content: str) -> List[Dict[str, Any]]:
