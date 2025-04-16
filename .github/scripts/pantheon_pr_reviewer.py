@@ -612,47 +612,7 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
 # AutoGen team and behavior definitions
 #######################################
 
-# Define a termination condition that stops the task if a special phrase is mentioned
-text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
 
-# Create a team with all the Greek gods and goddesses
-greek_pantheon_team = RoundRobinGroupChat(
-    [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
-    termination_condition=text_termination
-)
-
-# Create the task description without the PR content - it will be formatted later
-task = """Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
-- Respond in the following JSON format:
-{{
-  "inlineReviews": [
-    {{
-      "filename": "<filename>",
-      "lineNumber": <line_number>,
-      "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
-    }}
-  ],
-  "generalReviews": [
-    {{
-      "filename": "<filename>",
-      "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
-    }}
-  ]
-}}
-- Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
-- Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
-- Do NOT wrap the output in triple backticks or any markdown.
-- DO NOT include explanations or extra commentary.
-- All comments should reflect your unique personality and domain.
-- Do not give positive comments or compliments.
-- Write the comment in GitHub Markdown format.
-- IMPORTANT: NEVER suggest adding comments to the code.
-
-Review the following code diff:
-{formatted_content}
-
-Your feedback should be specific, constructive, and actionable.
-"""
 
 
 ####################
@@ -666,12 +626,51 @@ async def main() -> None:
     print(f"Fetching content for PR #{pr_number} in repository {repository}")
     formatted_content = fetch_pr_content(repository, pr_number, github_token)
 
-    # Update the task with the PR content
-    full_task = task.format(formatted_content=formatted_content)
+    # Define a termination condition that stops the task if a special phrase is mentioned
+    text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
+
+    # Create a team with all the Greek gods and goddesses
+    greek_pantheon_team = RoundRobinGroupChat(
+        [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+        termination_condition=text_termination
+    )
+
+    # Create the task description without the PR content - it will be formatted later
+    task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
+    - Respond in the following JSON format:
+    {{
+    "inlineReviews": [
+        {{
+        "filename": "<filename>",
+        "lineNumber": <line_number>,
+        "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
+        }}
+    ],
+    "generalReviews": [
+        {{
+        "filename": "<filename>",
+        "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
+        }}
+    ]
+    }}
+    - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
+    - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
+    - Do NOT wrap the output in triple backticks or any markdown.
+    - DO NOT include explanations or extra commentary.
+    - All comments should reflect your unique personality and domain.
+    - Do not give positive comments or compliments.
+    - Write the comment in GitHub Markdown format.
+    - IMPORTANT: NEVER suggest adding comments to the code.
+
+    Review the following code diff:
+    {formatted_content}
+
+    Your feedback should be specific, constructive, and actionable.
+    """
 
     # Run the review
     print("Starting review process with divine pantheon...")
-    divine_responses = await greek_pantheon_team.run(task=full_task)
+    divine_responses = await greek_pantheon_team.run(task=task)
 
     # Parse responses into inline + general comments
     inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
