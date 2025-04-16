@@ -665,6 +665,11 @@ def test_github_connection():
         print(f"Error details: {str(e)}")
         return False
 
+def chunk_text_by_lines(text: str, max_lines: int = 100) -> List[str]:
+    lines = text.split('\n')
+    return ['\n'.join(lines[i:i + max_lines]) for i in range(0, len(lines), max_lines)]
+
+
 ####################
 # Python functions
 ####################
@@ -692,49 +697,54 @@ async def main() -> None:
     )
 
     all_responses = []
-    # Process each file individually
-    print("Starting review process of each file in PR diff with divine pantheon...")
+    # Process each file individually - v2
     for filename, content in files_content.items():
         print(f"Processing file: {filename}")
         
-        task = f"""Your task is to review the following file from a pull request according to your divine domain of expertise. Instructions:
-        - Respond in the following JSON format:
-        {{
-        "inlineReviews": [
-            {{
-            "filename": "{filename}",
-            "lineNumber": <line_number>,
-            "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
-            }}
-        ],
-        "generalReviews": [
-            {{
-            "filename": "{filename}",
-            "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
-            }}
-        ]
-        }}
-        - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
-        - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
-        - Do NOT wrap the output in triple backticks or any markdown.
-        - DO NOT include explanations or extra commentary.
-        - All comments should reflect your unique personality and domain.
-        - Do not give positive comments or compliments.
-        - Write the comment in GitHub Markdown format.
-        - IMPORTANT: NEVER suggest adding comments to the code.
+        chunks = chunk_text_by_lines(content, max_lines=80)
+        print(f"{filename} split into {len(chunks)} chunk(s)")
 
-        Review the following code:
-        
-        {content}
+        for i, chunk in enumerate(chunks):
+            chunk_tag = f"{filename} - Part {i + 1}/{len(chunks)}"
+            task = f"""Your task is to review the following file part from a pull request according to your divine domain of expertise. Instructions:
+            - Respond in the following JSON format:
+            {{
+            "inlineReviews": [
+                {{
+                "filename": "{filename}",
+                "lineNumber": <line_number>,
+                "reviewComment": "[Deity-specific comment]"
+                }}
+            ],
+            "generalReviews": [
+                {{
+                "filename": "{filename}",
+                "reviewComment": "[General feedback from your perspective]"
+                }}
+            ]
+            }}
+            - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
+            - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
+            - Do NOT wrap the output in triple backticks or any markdown.
+            - DO NOT include explanations or extra commentary.
+            - All comments should reflect your unique personality and domain.
+            - Do not give positive comments or compliments.
+            - Write the comment in GitHub Markdown format.
+            - IMPORTANT: NEVER suggest adding comments to the code.
+            
+            Review the following code:
 
-        Your feedback should be specific, constructive, and actionable.
-        """
-        
-        # Process this file
-        divine_responses = await greek_pantheon_team.run(task=task)
-        all_responses.append(divine_responses)
-        
-        print(f"Completed review of {filename}")
+            ### File: {chunk_tag}
+            {chunk}
+
+            Your feedback should be specific, constructive, and actionable.
+            """
+            
+            # Process this file
+            divine_responses = await greek_pantheon_team.run(task=task)
+            all_responses.append(divine_responses)
+
+            print(f"Completed review of {filename}")
 
     # Parse responses into inline + general comments
     inline_reviews, general_reviews = parse_task_result_for_reviews(all_responses)
