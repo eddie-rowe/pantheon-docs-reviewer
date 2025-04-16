@@ -11,6 +11,7 @@ import re
 import json
 from github import Github
 from typing import Dict, List, Tuple, Optional
+import dataclasses
 
 ####################
 # GitHub definitions
@@ -429,7 +430,7 @@ harmonia = AssistantAgent(
 #############################
 
 # Github PR diff fetcher
-def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
+def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> Dict[str, str]:
     """
     Fetches the PR content from GitHub.
     
@@ -439,7 +440,7 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
         github_token: GitHub token for authentication
         
     Returns:
-        The formatted content of the PR diff
+        Dictionary mapping filenames to their content
     """
     try:
         # Initialize GitHub client
@@ -458,10 +459,11 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
         print(f"PR contains {len(files_changed)} changed files")
         
         if len(files_changed) == 0:
-            return "No files were changed in this PR."
+            return {"No files changed": "No files were changed in this PR."}
         
-        # Format the content into a readable diff format
-        formatted_content = ""
+        # Create a dictionary to store file contents
+        files_content = {}
+        
         for file in files_changed:
             print(f"Processing file: {file.filename} (Status: {file.status})")
             
@@ -470,48 +472,50 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
                 print(f"Skipping file {file.filename}: status={file.status}, patch={file.patch is None}")
                 continue
                 
-            formatted_content += f"\n### File: {file.filename}\n"
-            formatted_content += f"Status: {file.status}\n"
-            formatted_content += "```diff\n"
-            formatted_content += file.patch
-            formatted_content += "\n```\n"
+            # Start with the diff information
+            file_content = f"### File: {file.filename}\n"
+            file_content += f"Status: {file.status}\n"
+            file_content += "```diff\n"
+            file_content += file.patch
+            file_content += "\n```\n"
             
             # If it's a new or modified file, also get the full content
             if file.status in ["added", "modified"]:
                 try:
-                    file_content = repo.get_contents(file.filename, ref=pull_request.head.ref)
-                    print(f"Retrieved content for {file.filename}, size: {file_content.size} bytes")
+                    full_file_content = repo.get_contents(file.filename, ref=pull_request.head.ref)
+                    print(f"Retrieved content for {file.filename}, size: {full_file_content.size} bytes")
                     
                     # Skip very large files
-                    if file_content.size > 1000000:  # 1MB limit
-                        formatted_content += f"\n### Full content of {file.filename} (truncated - file too large)\n"
-                        continue
-                        
-                    try:
-                        decoded_content = file_content.decoded_content.decode('utf-8')
-                        formatted_content += f"\n### Full content of {file.filename}:\n"
-                        formatted_content += "```\n"
-                        formatted_content += decoded_content
-                        formatted_content += "\n```\n"
-                    except UnicodeDecodeError:
-                        print(f"Could not decode {file.filename} as UTF-8, likely a binary file")
-                        formatted_content += f"\n### Full content of {file.filename} (binary file, content omitted)\n"
+                    if full_file_content.size > 1000000:  # 1MB limit
+                        file_content += f"\n### Full content of {file.filename} (truncated - file too large)\n"
+                    else:
+                        try:
+                            decoded_content = full_file_content.decoded_content.decode('utf-8')
+                            file_content += f"\n### Full content of {file.filename}:\n"
+                            file_content += "```\n"
+                            file_content += decoded_content
+                            file_content += "\n```\n"
+                        except UnicodeDecodeError:
+                            print(f"Could not decode {file.filename} as UTF-8, likely a binary file")
+                            file_content += f"\n### Full content of {file.filename} (binary file, content omitted)\n"
                 except Exception as e:
                     error_msg = f"\nCould not get full content of {file.filename}: {str(e)}\n"
                     print(error_msg)
-                    formatted_content += error_msg
-        
-        print(f"Completed processing PR content, total size: {len(formatted_content)} characters")
-        if len(formatted_content) == 0:
-            return "Could not extract any content from the PR files."
+                    file_content += error_msg
             
-        return formatted_content
+            files_content[file.filename] = file_content
+        
+        print(f"Completed processing PR content, total files: {len(files_content)}")
+        if len(files_content) == 0:
+            return {"No valid files": "Could not extract any content from the PR files."}
+            
+        return files_content
         
     except Exception as e:
         error_msg = f"Error fetching PR content: {str(e)}"
         print(error_msg)
-        return error_msg
-    
+        return {"Error": error_msg}   
+
 # JSON parser
 def parse_task_result_for_reviews(task_result):
     all_inline_comments = []
@@ -663,144 +667,145 @@ def test_github_connection():
         return False
 
 
-# Define a maximum character length per chunk (adjust as needed)
-MAX_CHUNK_SIZE = 8000  # for example, 8000 characters per chunk
-
-def chunk_text(text: str, max_chunk_size: int = MAX_CHUNK_SIZE) -> list:
-    """
-    Splits text into chunks that are roughly max_chunk_size in length,
-    ensuring lines are not broken mid-line.
-    """
-    chunks = []
-    current_chunk = ""
-    for line in text.splitlines(keepends=True):
-        # If adding the line would exceed max_chunk_size, push the current chunk and reset.
-        if len(current_chunk) + len(line) > max_chunk_size:
-            chunks.append(current_chunk)
-            current_chunk = line
-        else:
-            current_chunk += line
-    if current_chunk:
-        chunks.append(current_chunk)
-    return chunks
-
 ####################
 # Python functions
 ####################
 
+async def process_files_iteratively(files_content, greek_pantheon_team):
+    """
+    Process each file in the PR separately and accumulate results.
+    
+    Args:
+        files_content: Dictionary mapping filenames to their content
+        greek_pantheon_team: The RoundRobinGroupChat team of agents
+        
+    Returns:
+        List of all divine responses
+    """
+    all_responses = []
+    
+    # Process each file individually
+    for filename, content in files_content.items():
+        print(f"Processing file: {filename}")
+        
+        task = f"""Your task is to review the following file from a pull request according to your divine domain of expertise. Instructions:
+        - Respond in the following JSON format:
+        {{
+        "inlineReviews": [
+            {{
+            "filename": "{filename}",
+            "lineNumber": <line_number>,
+            "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
+            }}
+        ],
+        "generalReviews": [
+            {{
+            "filename": "{filename}",
+            "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
+            }}
+        ]
+        }}
+        - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
+        - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
+        - Do NOT wrap the output in triple backticks or any markdown.
+        - DO NOT include explanations or extra commentary.
+        - All comments should reflect your unique personality and domain.
+        - Do not give positive comments or compliments.
+        - Write the comment in GitHub Markdown format.
+        - IMPORTANT: NEVER suggest adding comments to the code.
+
+        Review the following code:
+        
+        {content}
+
+        Your feedback should be specific, constructive, and actionable.
+        """
+        
+        # Define a termination condition for each file review
+        file_termination = TextMentionTermination(f"REVIEW OF {filename} COMPLETE")
+        
+        # Temporarily override the team's termination condition
+        original_termination = greek_pantheon_team.termination_condition
+        greek_pantheon_team.termination_condition = file_termination
+        
+        # Process this file
+        file_responses = await greek_pantheon_team.run(task=task)
+        all_responses.append(file_responses)
+        
+        print(f"Completed review of {filename}")
+    
+    # Restore the original termination condition for the final summary
+    greek_pantheon_team.termination_condition = original_termination
+    
+    # Create a final summary task that integrates all files
+    summary_task = """Now that you've reviewed all files individually, please provide a final summary that integrates all your findings.
+    Harmonia should lead this discussion to create a comprehensive summary of all the feedback provided.
+    Include specific highlights and patterns observed across all files reviewed.
+    
+    DOCUMENTATION REVIEW COMPLETE
+    """
+    
+    final_summary = await greek_pantheon_team.run(task=summary_task)
+    all_responses.append(final_summary)
+    
+    return all_responses
+
+
+# Main function to run the GitHub Action
 async def main() -> None:
-    # Test GitHub connection
+    # Test Github connection
     if not test_github_connection():
         print("Exiting due to GitHub authentication/connection issues")
         return
 
-    # Initialize GitHub client and get the pull request
-    g = Github(github_token)
-    repo = g.get_repo(repository)
-    pull_request = repo.get_pull(pr_number)
-    files_changed = list(pull_request.get_files())
-    print(f"PR contains {len(files_changed)} changed files")
-
-    # Define a termination condition for the divine review process
+    # Fetch the PR content as a dictionary of files
+    print(f"Fetching content for PR #{pr_number} in repository {repository}")
+    files_content = fetch_pr_content(repository, pr_number, github_token)
+    
+    # Define a termination condition for the final summary
     text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
 
-    # Create the Greek Pantheon team
+    # Create a team with all the Greek gods and goddesses
     greek_pantheon_team = RoundRobinGroupChat(
-        [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia],
+        [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
         termination_condition=text_termination
     )
 
-    # Aggregate all review comments from each file/chunk
-    aggregated_inline_reviews = []
-    aggregated_general_reviews = []
+    # Process files individually and collect responses
+    print("Starting review process with divine pantheon...")
+    all_divine_responses = await process_files_iteratively(files_content, greek_pantheon_team)
+    
+    # Combine all responses for parsing
+    all_messages = []
+    for responses in all_divine_responses:
+        all_messages.extend(responses.messages)
+    
+    # Create a combined response object for parsing
+    combined_responses = dataclasses.replace(all_divine_responses[0], messages=all_messages)
+    
+    # Parse responses into inline + general comments
+    inline_reviews, general_reviews = parse_task_result_for_reviews(combined_responses)
 
-    # Iterate over each file that has a patch and review it separately
-    for file in files_changed:
-        # Skip files that are removed or with no diff available
-        if file.status == "removed" or file.patch is None:
-            print(f"Skipping {file.filename}: status={file.status}, no patch available.")
-            continue
-
-        # Build file-specific diff content along with full content if available
-        file_diff = f"\n### File: {file.filename}\nStatus: {file.status}\n```diff\n{file.patch}\n```"
-        try:
-            if file.status in ["added", "modified"]:
-                file_content = repo.get_contents(file.filename, ref=pull_request.head.ref)
-                if file_content.size <= 1000000:  # 1MB limit
-                    decoded_content = file_content.decoded_content.decode('utf-8')
-                    file_diff += f"\n### Full content of {file.filename}:\n```\n{decoded_content}\n```"
-                else:
-                    file_diff += f"\n### Full content of {file.filename} not appended (file too large)"
-        except Exception as e:
-            print(f"Could not retrieve full content for {file.filename}: {str(e)}")
-
-        # Chunk the file_diff if it's too large
-        chunks = chunk_text(file_diff) if len(file_diff) > MAX_CHUNK_SIZE else [file_diff]
-
-        # Process each chunk individually
-        for i, chunk in enumerate(chunks):
-            # Optional: differentiate chunk number if needed
-            task = f"""Your task is to review the following changes from a pull request file according to your divine domain of expertise. Instructions:
-- Respond in the following JSON format:
-{{
-"inlineReviews": [
-    {{
-    "filename": "<filename>",
-    "lineNumber": <line_number>,
-    "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
-    }}
-],
-"generalReviews": [
-    {{
-    "filename": "<filename>",
-    "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
-    }}
-]
-}}
-- Create a reasonable amount of inlineReview comments as necessary to improve the content without overwhelming the original author.
-- Create one general summary comment reflective of your divine personality that summarizes the overall content review.
-- Do NOT wrap the output in triple backticks or any markdown.
-- DO NOT include explanations or extra commentary.
-- All comments should reflect your unique personality and domain.
-- Do not give positive comments or compliments.
-- Write the comment in GitHub Markdown format.
-- IMPORTANT: NEVER suggest adding comments to the code.
-
-Review the following code diff (chunk {i+1}/{len(chunks)}):
-{chunk}
-
-Your feedback should be specific, constructive, and actionable.
-"""
-            print(f"Reviewing file: {file.filename} (chunk {i+1}/{len(chunks)})")
-            divine_responses = await greek_pantheon_team.run(task=task)
-
-            # Parse the responses to get inline and general reviews for the chunk
-            inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
-            # Optionally: annotate the chunk number into filename so it’s clear they belong together
-            for review in inline_reviews:
-                review["filename"] = f"{file.filename} (chunk {i+1})"
-            for review in general_reviews:
-                review["filename"] = f"{file.filename} (chunk {i+1})"
-            aggregated_inline_reviews.extend(inline_reviews)
-            aggregated_general_reviews.extend(general_reviews)
-
-    # Print the aggregated results for debugging
-    print("\nAggregated Inline Comments:")
-    for comment in aggregated_inline_reviews:
+    # Print the parsed results for debugging
+    print("\n Inline Comments:")
+    for comment in inline_reviews:
         print(comment)
-    print("\nAggregated General Summary Comments:")
-    for comment in aggregated_general_reviews:
+    print("\n General Summary Comments:")
+    for comment in general_reviews:
         print(comment)
 
-    # Post the aggregated comments to the GitHub PR
-    print("Posting aggregated review comments to GitHub PR...")
-    post_comments_to_pr(repository, pr_number, github_token, aggregated_inline_reviews, aggregated_general_reviews)
-
+    # Post comments to GitHub PR
+    print("Posting comments to GitHub PR...")
+    post_comments_to_pr(repository, pr_number, github_token, inline_reviews, general_reviews)
+    
+    # Print completion message
     print("Documentation review process completed!")
 
     # Close the connection to the model client
     await model_client.close()
 
+    
+# Entry point for the GitHub Action
 if __name__ == "__main__":
-    import asyncio
+    # Run the main process
     asyncio.run(main())
