@@ -662,6 +662,28 @@ def test_github_connection():
         print(f"Error details: {str(e)}")
         return False
 
+
+# Define a maximum character length per chunk (adjust as needed)
+MAX_CHUNK_SIZE = 8000  # for example, 8000 characters per chunk
+
+def chunk_text(text: str, max_chunk_size: int = MAX_CHUNK_SIZE) -> list:
+    """
+    Splits text into chunks that are roughly max_chunk_size in length,
+    ensuring lines are not broken mid-line.
+    """
+    chunks = []
+    current_chunk = ""
+    for line in text.splitlines(keepends=True):
+        # If adding the line would exceed max_chunk_size, push the current chunk and reset.
+        if len(current_chunk) + len(line) > max_chunk_size:
+            chunks.append(current_chunk)
+            current_chunk = line
+        else:
+            current_chunk += line
+    if current_chunk:
+        chunks.append(current_chunk)
+    return chunks
+
 ####################
 # Python functions
 ####################
@@ -688,7 +710,7 @@ async def main() -> None:
         termination_condition=text_termination
     )
 
-    # Aggregate all review comments from each file
+    # Aggregate all review comments from each file/chunk
     aggregated_inline_reviews = []
     aggregated_general_reviews = []
 
@@ -699,11 +721,9 @@ async def main() -> None:
             print(f"Skipping {file.filename}: status={file.status}, no patch available.")
             continue
 
-        # Build a task description focused on this file diff (and full content if available)
+        # Build file-specific diff content along with full content if available
         file_diff = f"\n### File: {file.filename}\nStatus: {file.status}\n```diff\n{file.patch}\n```"
-        # Optionally append the full content if needed (see original logic)
         try:
-            # Only get full file content for added/modified files (if not too large)
             if file.status in ["added", "modified"]:
                 file_content = repo.get_contents(file.filename, ref=pull_request.head.ref)
                 if file_content.size <= 1000000:  # 1MB limit
@@ -714,7 +734,13 @@ async def main() -> None:
         except Exception as e:
             print(f"Could not retrieve full content for {file.filename}: {str(e)}")
 
-        task = f"""Your task is to review the following changes from a pull request file according to your divine domain of expertise. Instructions:
+        # Chunk the file_diff if it's too large
+        chunks = chunk_text(file_diff) if len(file_diff) > MAX_CHUNK_SIZE else [file_diff]
+
+        # Process each chunk individually
+        for i, chunk in enumerate(chunks):
+            # Optional: differentiate chunk number if needed
+            task = f"""Your task is to review the following changes from a pull request file according to your divine domain of expertise. Instructions:
 - Respond in the following JSON format:
 {{
 "inlineReviews": [
@@ -740,20 +766,23 @@ async def main() -> None:
 - Write the comment in GitHub Markdown format.
 - IMPORTANT: NEVER suggest adding comments to the code.
 
-Review the following code diff:
-{file_diff}
+Review the following code diff (chunk {i+1}/{len(chunks)}):
+{chunk}
 
 Your feedback should be specific, constructive, and actionable.
 """
+            print(f"Reviewing file: {file.filename} (chunk {i+1}/{len(chunks)})")
+            divine_responses = await greek_pantheon_team.run(task=task)
 
-        print(f"Reviewing file: {file.filename}")
-        # Run review for the file
-        divine_responses = await greek_pantheon_team.run(task=task)
-
-        # Parse the responses to get inline and general reviews for the file
-        inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
-        aggregated_inline_reviews.extend(inline_reviews)
-        aggregated_general_reviews.extend(general_reviews)
+            # Parse the responses to get inline and general reviews for the chunk
+            inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
+            # Optionally: annotate the chunk number into filename so it’s clear they belong together
+            for review in inline_reviews:
+                review["filename"] = f"{file.filename} (chunk {i+1})"
+            for review in general_reviews:
+                review["filename"] = f"{file.filename} (chunk {i+1})"
+            aggregated_inline_reviews.extend(inline_reviews)
+            aggregated_general_reviews.extend(general_reviews)
 
     # Print the aggregated results for debugging
     print("\nAggregated Inline Comments:")
@@ -771,7 +800,6 @@ Your feedback should be specific, constructive, and actionable.
 
     # Close the connection to the model client
     await model_client.close()
-
 
 if __name__ == "__main__":
     import asyncio
