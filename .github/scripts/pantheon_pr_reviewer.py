@@ -675,9 +675,51 @@ async def main() -> None:
         return
 
     # Fetch the PR content
-    print(f"Fetching content for PR #{pr_number} in repository {repository}")
-    formatted_content = fetch_pr_content(repository, pr_number, github_token)
-    print(formatted_content)
+    #print(f"Fetching content for PR #{pr_number} in repository {repository}")
+    #formatted_content = fetch_pr_content(repository, pr_number, github_token)
+    #print(formatted_content)
+
+# Example diff
+    formatted_content = """
+### File: .github/scripts/pantheon_pr_reviewer.py
+Status: modified
+```diff
+@@ -1,53 +1,34 @@
+import asyncio
+from autogen_agentchat.agents import AssistantAgent
+-from autogen_agentchat.base import TaskResult
+-from autogen_agentchat.conditions import ExternalTermination, TextMentionTermination
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_agentchat.ui import Console
+from autogen_core import CancellationToken
+from autogen_ext.models.openai import OpenAIChatCompletionClient
++from autogen_agentchat.conditions import TextMentionTermination
++from autogen_agentchat.messages import TextMessage
+import os
+import re
++import json
+from github import Github
+from typing import Dict, List, Tuple, Optional
+
+# Submit the review with all comments
+harmonia_summary = "# Divine Pantheon Review\n\nThe council of divine reviewers has completed their assessment of this Pull Request."
+pr_handler.submit_review(github_comments, harmonia_summary)
+
+# Write Harmonia's review summary to the GitHub Step Summary
+step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+if step_summary_path:
+    with open(step_summary_path, "w", encoding="utf-8") as f:
+        f.write("# Divine Pantheon Review Summary\n\n")
+        f.write(review_summary)
+
+# Close the model client
+await model_client.close()
+
+# Entry point for the GitHub Action
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+    """
 
     # Define a termination condition that stops the task if a special phrase is mentioned
     text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
@@ -737,8 +779,8 @@ async def main() -> None:
         print(comment)
 
     # Post comments to GitHub PR
-    print("Posting comments to GitHub PR...")
-    post_comments_to_pr(repository, pr_number, github_token, inline_reviews, general_reviews)
+    #print("Posting comments to GitHub PR...")
+    #post_comments_to_pr(repository, pr_number, github_token, inline_reviews, general_reviews)
     
     # Print completion message
     print("Documentation review process completed!")
