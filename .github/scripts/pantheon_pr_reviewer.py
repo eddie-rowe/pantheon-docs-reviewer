@@ -781,8 +781,8 @@ async def main() -> None:
         print(comment)
 
     # Post comments to GitHub PR
-    #print("Posting comments to GitHub PR...")
-    #post_comments_to_pr(repository, pr_number, github_token, inline_reviews, general_reviews)
+    print("Posting comments to GitHub PR...")
+    post_comments_to_pr(repository, pr_number, github_token, inline_reviews, general_reviews)
     
     # Print completion message
     print("Documentation review process completed!")
