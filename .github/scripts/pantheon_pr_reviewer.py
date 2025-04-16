@@ -423,14 +423,15 @@ harmonia = AssistantAgent(
     """
 )
 
+
 #############################
 # Helper function definitions
 #############################
 
-# Github PR diff fetcher that separates files
-def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> List[Dict]:
+# Github PR diff fetcher
+def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
     """
-    Fetches the PR content from GitHub and returns a list of file data.
+    Fetches the PR content from GitHub.
     
     Args:
         repo_name: The name of the repository in the format 'owner/repo'
@@ -438,7 +439,7 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> List[
         github_token: GitHub token for authentication
         
     Returns:
-        A list of file information dictionaries
+        The formatted content of the PR diff
     """
     try:
         # Initialize GitHub client
@@ -457,10 +458,10 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> List[
         print(f"PR contains {len(files_changed)} changed files")
         
         if len(files_changed) == 0:
-            return []
+            return "No files were changed in this PR."
         
-        # Store file data separately
-        file_data = []
+        # Format the content into a readable diff format
+        formatted_content = ""
         for file in files_changed:
             print(f"Processing file: {file.filename} (Status: {file.status})")
             
@@ -469,15 +470,13 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> List[
                 print(f"Skipping file {file.filename}: status={file.status}, patch={file.patch is None}")
                 continue
                 
-            # Format the content into a readable diff format
-            formatted_content = f"\n### File: {file.filename}\n"
+            formatted_content += f"\n### File: {file.filename}\n"
             formatted_content += f"Status: {file.status}\n"
             formatted_content += "```diff\n"
             formatted_content += file.patch
             formatted_content += "\n```\n"
             
             # If it's a new or modified file, also get the full content
-            full_content = None
             if file.status in ["added", "modified"]:
                 try:
                     file_content = repo.get_contents(file.filename, ref=pull_request.head.ref)
@@ -486,129 +485,34 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> List[
                     # Skip very large files
                     if file_content.size > 1000000:  # 1MB limit
                         formatted_content += f"\n### Full content of {file.filename} (truncated - file too large)\n"
-                    else:
-                        try:
-                            decoded_content = file_content.decoded_content.decode('utf-8')
-                            formatted_content += f"\n### Full content of {file.filename}:\n"
-                            formatted_content += "```\n"
-                            formatted_content += decoded_content
-                            formatted_content += "\n```\n"
-                        except UnicodeDecodeError:
-                            print(f"Could not decode {file.filename} as UTF-8, likely a binary file")
-                            formatted_content += f"\n### Full content of {file.filename} (binary file, content omitted)\n"
+                        continue
+                        
+                    try:
+                        decoded_content = file_content.decoded_content.decode('utf-8')
+                        formatted_content += f"\n### Full content of {file.filename}:\n"
+                        formatted_content += "```\n"
+                        formatted_content += decoded_content
+                        formatted_content += "\n```\n"
+                    except UnicodeDecodeError:
+                        print(f"Could not decode {file.filename} as UTF-8, likely a binary file")
+                        formatted_content += f"\n### Full content of {file.filename} (binary file, content omitted)\n"
                 except Exception as e:
                     error_msg = f"\nCould not get full content of {file.filename}: {str(e)}\n"
                     print(error_msg)
                     formatted_content += error_msg
-            
-            file_data.append({
-                "filename": file.filename,
-                "content": formatted_content
-            })
         
-        print(f"Completed processing PR content, total files: {len(file_data)}")
-        return file_data
+        print(f"Completed processing PR content, total size: {len(formatted_content)} characters")
+        if len(formatted_content) == 0:
+            return "Could not extract any content from the PR files."
+            
+        return formatted_content
         
     except Exception as e:
         error_msg = f"Error fetching PR content: {str(e)}"
         print(error_msg)
-        return []
-
-# Group files into batches for processing
-def batch_files(files: List[Dict], max_batch_size: int = 3) -> List[List[Dict]]:
-    """
-    Group files into batches for processing to avoid context limits.
+        return error_msg
     
-    Args:
-        files: List of file dictionaries
-        max_batch_size: Maximum number of files per batch
-        
-    Returns:
-        List of batches, where each batch is a list of file dictionaries
-    """
-    return [files[i:i + max_batch_size] for i in range(0, len(files), max_batch_size)]
-
-# Process a batch of files with the pantheon team
-async def process_file_batch(greek_pantheon_team: RoundRobinGroupChat, batch: List[Dict]) -> Dict:
-    """
-    Process a batch of files with the pantheon team.
-    
-    Args:
-        greek_pantheon_team: The pantheon team to use
-        batch: List of file dictionaries to process
-        
-    Returns:
-        The results from the team discussion
-    """
-    # Combine file content for this batch
-    batch_content = "\n\n".join([file["content"] for file in batch])
-    
-    # Create the task description with the batch content
-    task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
-    - Respond in the following JSON format:
-    {{
-    "inlineReviews": [
-        {{
-        "filename": "<filename>",
-        "lineNumber": <line_number>,
-        "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
-        }}
-    ],
-    "generalReviews": [
-        {{
-        "filename": "<filename>",
-        "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
-        }}
-    ]
-    }}
-    - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
-    - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
-    - Do NOT wrap the output in triple backticks or any markdown.
-    - DO NOT include explanations or extra commentary.
-    - All comments should reflect your unique personality and domain.
-    - Do not give positive comments or compliments.
-    - Write the comment in GitHub Markdown format.
-    - IMPORTANT: NEVER suggest adding comments to the code.
-
-    Review the following code diff:
-    {batch_content}
-
-    Your feedback should be specific, constructive, and actionable.
-    """
-    
-    # Run the review for this batch
-    print(f"Starting review process for batch containing {len(batch)} files...")
-    try:
-        batch_responses = await greek_pantheon_team.run(task=task)
-        return batch_responses
-    except Exception as e:
-        print(f"Error processing batch: {str(e)}")
-        return None
-
-# Merge results from multiple batches
-def merge_batch_results(batch_results: List[Dict]) -> Dict:
-    """
-    Merge results from multiple batches.
-    
-    Args:
-        batch_results: List of batch results
-        
-    Returns:
-        Merged results
-    """
-    all_messages = []
-    for result in batch_results:
-        if result and hasattr(result, 'messages'):
-            all_messages.extend(result.messages)
-    
-    # Create a combined result object
-    combined_result = type('obj', (object,), {
-        'messages': all_messages
-    })
-    
-    return combined_result
-
-# Parse JSON from deity responses
+# JSON parser
 def parse_task_result_for_reviews(task_result):
     all_inline_comments = []
     all_general_comments = []
@@ -759,87 +663,116 @@ def test_github_connection():
         return False
 
 ####################
-# Main function
+# Python functions
 ####################
 
-# Main function to run the GitHub Action
 async def main() -> None:
-    # Test Github connection
+    # Test GitHub connection
     if not test_github_connection():
         print("Exiting due to GitHub authentication/connection issues")
         return
 
-    # Fetch the PR content as a list of files
-    print(f"Fetching content for PR #{pr_number} in repository {repository}")
-    pr_files = fetch_pr_content(repository, pr_number, github_token)
-    
-    if not pr_files:
-        print("No files found in PR or error occurred during fetching. Exiting.")
-        return
-        
-    print(f"Found {len(pr_files)} files to review")
-    
-    # Define a termination condition that stops the task if a special phrase is mentioned
+    # Initialize GitHub client and get the pull request
+    g = Github(github_token)
+    repo = g.get_repo(repository)
+    pull_request = repo.get_pull(pr_number)
+    files_changed = list(pull_request.get_files())
+    print(f"PR contains {len(files_changed)} changed files")
+
+    # Define a termination condition for the divine review process
     text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
 
-    # Create a team with all the Greek gods and goddesses
+    # Create the Greek Pantheon team
     greek_pantheon_team = RoundRobinGroupChat(
-        [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+        [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia],
         termination_condition=text_termination
     )
-    
-    # Split files into batches to avoid exceeding context limits
-    file_batches = batch_files(pr_files, max_batch_size=2)  # Adjust batch size as needed
-    print(f"Split {len(pr_files)} files into {len(file_batches)} batches")
-    
-    # Process each batch of files
-    batch_results = []
-    for i, batch in enumerate(file_batches):
-        print(f"Processing batch {i+1}/{len(file_batches)}...")
-        batch_result = await process_file_batch(greek_pantheon_team, batch)
-        if batch_result:
-            batch_results.append(batch_result)
-    
-    # If we have multiple batches, we need to merge the results
-    if len(batch_results) > 1:
-        print("Merging results from multiple batches...")
-        combined_result = merge_batch_results(batch_results)
-    else:
-        combined_result = batch_results[0] if batch_results else None
-    
-    if not combined_result:
-        print("No valid results obtained from reviews. Exiting.")
-        return
-    
-    # Parse responses into inline + general comments
-    print("Parsing review results...")
-    inline_reviews, general_reviews = parse_task_result_for_reviews(combined_result)
 
-    # Print the parsed results for debugging
-    print("\nInline Comments:")
-    print(f"Total: {len(inline_reviews)}")
-    for i, comment in enumerate(inline_reviews[:5]):  # Print first 5 as example
-        if i < 5:
-            print(f"  {i+1}. {comment['deity']} on {comment['filename']} line {comment['lineNumber']}")
-    
-    print("\nGeneral Summary Comments:")
-    print(f"Total: {len(general_reviews)}")
-    for i, comment in enumerate(general_reviews[:5]):  # Print first 5 as example
-        if i < 5:
-            print(f"  {i+1}. {comment['deity']} on {comment['filename']}")
+    # Aggregate all review comments from each file
+    aggregated_inline_reviews = []
+    aggregated_general_reviews = []
 
-    # Post comments to GitHub PR
-    print("Posting comments to GitHub PR...")
-    post_comments_to_pr(repository, pr_number, github_token, inline_reviews, general_reviews)
-    
-    # Print completion message
+    # Iterate over each file that has a patch and review it separately
+    for file in files_changed:
+        # Skip files that are removed or with no diff available
+        if file.status == "removed" or file.patch is None:
+            print(f"Skipping {file.filename}: status={file.status}, no patch available.")
+            continue
+
+        # Build a task description focused on this file diff (and full content if available)
+        file_diff = f"\n### File: {file.filename}\nStatus: {file.status}\n```diff\n{file.patch}\n```"
+        # Optionally append the full content if needed (see original logic)
+        try:
+            # Only get full file content for added/modified files (if not too large)
+            if file.status in ["added", "modified"]:
+                file_content = repo.get_contents(file.filename, ref=pull_request.head.ref)
+                if file_content.size <= 1000000:  # 1MB limit
+                    decoded_content = file_content.decoded_content.decode('utf-8')
+                    file_diff += f"\n### Full content of {file.filename}:\n```\n{decoded_content}\n```"
+                else:
+                    file_diff += f"\n### Full content of {file.filename} not appended (file too large)"
+        except Exception as e:
+            print(f"Could not retrieve full content for {file.filename}: {str(e)}")
+
+        task = f"""Your task is to review the following changes from a pull request file according to your divine domain of expertise. Instructions:
+- Respond in the following JSON format:
+{{
+"inlineReviews": [
+    {{
+    "filename": "<filename>",
+    "lineNumber": <line_number>,
+    "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
+    }}
+],
+"generalReviews": [
+    {{
+    "filename": "<filename>",
+    "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
+    }}
+]
+}}
+- Create a reasonable amount of inlineReview comments as necessary to improve the content without overwhelming the original author.
+- Create one general summary comment reflective of your divine personality that summarizes the overall content review.
+- Do NOT wrap the output in triple backticks or any markdown.
+- DO NOT include explanations or extra commentary.
+- All comments should reflect your unique personality and domain.
+- Do not give positive comments or compliments.
+- Write the comment in GitHub Markdown format.
+- IMPORTANT: NEVER suggest adding comments to the code.
+
+Review the following code diff:
+{file_diff}
+
+Your feedback should be specific, constructive, and actionable.
+"""
+
+        print(f"Reviewing file: {file.filename}")
+        # Run review for the file
+        divine_responses = await greek_pantheon_team.run(task=task)
+
+        # Parse the responses to get inline and general reviews for the file
+        inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
+        aggregated_inline_reviews.extend(inline_reviews)
+        aggregated_general_reviews.extend(general_reviews)
+
+    # Print the aggregated results for debugging
+    print("\nAggregated Inline Comments:")
+    for comment in aggregated_inline_reviews:
+        print(comment)
+    print("\nAggregated General Summary Comments:")
+    for comment in aggregated_general_reviews:
+        print(comment)
+
+    # Post the aggregated comments to the GitHub PR
+    print("Posting aggregated review comments to GitHub PR...")
+    post_comments_to_pr(repository, pr_number, github_token, aggregated_inline_reviews, aggregated_general_reviews)
+
     print("Documentation review process completed!")
 
     # Close the connection to the model client
     await model_client.close()
 
-    
-# Entry point for the GitHub Action
+
 if __name__ == "__main__":
-    # Run the main process
+    import asyncio
     asyncio.run(main())
