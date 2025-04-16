@@ -640,13 +640,26 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
 def test_github_connection():
     try:
         g = Github(github_token)
-        user = g.get_user()
-        print(f"Successfully authenticated as: {user.login}")
+        
+        # Try to access the repository only
+        print(f"Attempting to access repository: {repository}")
         repo = g.get_repo(repository)
-        print(f"Successfully accessed repository: {repository}")
+        print(f"Repository exists. Full name: {repo.full_name}")
+        
+        # Now try to access the PR
+        print(f"Attempting to access PR #{pr_number}")
+        pr = repo.get_pull(pr_number)
+        print(f"PR exists. Title: {pr.title}")
+        
+        # Try to list files in the PR
+        print("Attempting to list files in PR")
+        files = list(pr.get_files())
+        print(f"PR contains {len(files)} files")
+        
         return True
     except Exception as e:
-        print(f"GitHub connection test failed: {str(e)}")
+        print(f"GitHub connection test failed at step: {e.__class__.__name__}")
+        print(f"Error details: {str(e)}")
         return False
 
 ####################
