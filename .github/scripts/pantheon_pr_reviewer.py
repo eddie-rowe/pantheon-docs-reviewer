@@ -624,7 +624,50 @@ async def main() -> None:
 
     # Fetch the PR content
     print(f"Fetching content for PR #{pr_number} in repository {repository}")
-    formatted_content = fetch_pr_content(repository, pr_number, github_token)
+    #formatted_content = fetch_pr_content(repository, pr_number, github_token)
+    # Example diff
+    formatted_content = """
+    --- README.md
+
+    # Divine Pantheon GitHub PR Reviewer
+
+    This GitHub Action combines the power of an autogen "pantheon" of specialized AI reviewers with GitHub's PR review capabilities. Each "deity" reviewer specializes in a different aspect of code quality and provides tailored feedback directly on your pull requests.
+
+    ## Features
+
+    - **Specialized Review Domains**: Each AI reviewer (deity) focuses on a specific aspect of code quality:
+    - **Apollo**: Style guide adherence and code aesthetics
+    - **Hermes**: Readability and communication clarity
+    - **Athena**: Cognitive load reduction and code complexity
+    - **Hestia**: Documentation structure and organization
+    - **Mnemosyne**: Context completeness
+    - **Hephaestus**: Code accuracy and functionality
+    - **Heracles**: Cross-linking and code relationships
+    - **Demeter**: Terminology consistency
+    - **Aphrodite**: Code formatting and visual presentation
+    - **Iris**: Accessibility
+    - **Dionysus**: Visual aid suggestions
+    - **Chronos**: Knowledge decay and outdated patterns
+
+    - **Harmonious Summary**: Harmonia provides an integrated review summary combining all feedback
+
+    - **In-line PR Comments**: Each reviewer's feedback is added as in-line comments at the relevant locations in your code
+
+    ## Setup Instructions
+
+    ### 1. Add the workflow file
+
+    Create a file `.github/workflows/pantheon-review.yml` in your repository with the content from the provided workflow YAML.
+
+    ### 2. Add the pantheon reviewer script
+
+    Save the provided Python script as `pantheon_pr_reviewer.py` in your repository.
+
+    ### 3. Set up secrets
+
+    Add the following secrets to your GitHub repository:
+    - `OPENAI_API_KEY`: Your OpenAI API key
+    """
 
     # Define a termination condition that stops the task if a special phrase is mentioned
     text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
