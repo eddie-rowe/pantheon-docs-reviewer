@@ -447,18 +447,27 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
         
         # Get the repository
         repo = g.get_repo(repo_name)
+        print(f"Successfully connected to repository: {repo_name}")
         
         # Get the pull request
         pull_request = repo.get_pull(pr_number)
+        print(f"Found PR #{pr_number}: {pull_request.title}")
         
         # Get the files changed in the PR
-        files_changed = pull_request.get_files()
+        files_changed = list(pull_request.get_files())
+        print(f"PR contains {len(files_changed)} changed files")
+        
+        if len(files_changed) == 0:
+            return "No files were changed in this PR."
         
         # Format the content into a readable diff format
         formatted_content = ""
         for file in files_changed:
+            print(f"Processing file: {file.filename} (Status: {file.status})")
+            
             # Skip binary files and removed files
             if file.status == "removed" or file.patch is None:
+                print(f"Skipping file {file.filename}: status={file.status}, patch={file.patch is None}")
                 continue
                 
             formatted_content += f"\n### File: {file.filename}\n"
@@ -470,20 +479,39 @@ def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
             # If it's a new or modified file, also get the full content
             if file.status in ["added", "modified"]:
                 try:
-                    file_content = repo.get_contents(file.filename, ref=pull_request.head.ref).decoded_content.decode('utf-8')
-                    formatted_content += f"\n### Full content of {file.filename}:\n"
-                    formatted_content += "```\n"
-                    formatted_content += file_content
-                    formatted_content += "\n```\n"
+                    file_content = repo.get_contents(file.filename, ref=pull_request.head.ref)
+                    print(f"Retrieved content for {file.filename}, size: {file_content.size} bytes")
+                    
+                    # Skip very large files
+                    if file_content.size > 1000000:  # 1MB limit
+                        formatted_content += f"\n### Full content of {file.filename} (truncated - file too large)\n"
+                        continue
+                        
+                    try:
+                        decoded_content = file_content.decoded_content.decode('utf-8')
+                        formatted_content += f"\n### Full content of {file.filename}:\n"
+                        formatted_content += "```\n"
+                        formatted_content += decoded_content
+                        formatted_content += "\n```\n"
+                    except UnicodeDecodeError:
+                        print(f"Could not decode {file.filename} as UTF-8, likely a binary file")
+                        formatted_content += f"\n### Full content of {file.filename} (binary file, content omitted)\n"
                 except Exception as e:
-                    formatted_content += f"\nCould not get full content: {str(e)}\n"
+                    error_msg = f"\nCould not get full content of {file.filename}: {str(e)}\n"
+                    print(error_msg)
+                    formatted_content += error_msg
         
+        print(f"Completed processing PR content, total size: {len(formatted_content)} characters")
+        if len(formatted_content) == 0:
+            return "Could not extract any content from the PR files."
+            
         return formatted_content
         
     except Exception as e:
-        print(f"Error fetching PR content: {str(e)}")
-        return f"Error fetching PR content: {str(e)}"
-
+        error_msg = f"Error fetching PR content: {str(e)}"
+        print(error_msg)
+        return error_msg
+    
 # JSON parser
 def parse_task_result_for_reviews(task_result):
     all_inline_comments = []
@@ -608,12 +636,18 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
     except Exception as e:
         print(f"Error posting comments to PR: {str(e)}")
  
-#######################################
-# AutoGen team and behavior definitions
-#######################################
-
-
-
+# Github connection tester
+def test_github_connection():
+    try:
+        g = Github(github_token)
+        user = g.get_user()
+        print(f"Successfully authenticated as: {user.login}")
+        repo = g.get_repo(repository)
+        print(f"Successfully accessed repository: {repository}")
+        return True
+    except Exception as e:
+        print(f"GitHub connection test failed: {str(e)}")
+        return False
 
 ####################
 # Python functions
@@ -622,52 +656,15 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
 # Main function to run the GitHub Action
 async def main() -> None:
 
+    # Test Github connection
+    if not test_github_connection():
+        print("Exiting due to GitHub authentication/connection issues")
+        return
+
     # Fetch the PR content
     print(f"Fetching content for PR #{pr_number} in repository {repository}")
-    #formatted_content = fetch_pr_content(repository, pr_number, github_token)
-    # Example diff
-    formatted_content = """
-    --- README.md
-
-    # Divine Pantheon GitHub PR Reviewer
-
-    This GitHub Action combines the power of an autogen "pantheon" of specialized AI reviewers with GitHub's PR review capabilities. Each "deity" reviewer specializes in a different aspect of code quality and provides tailored feedback directly on your pull requests.
-
-    ## Features
-
-    - **Specialized Review Domains**: Each AI reviewer (deity) focuses on a specific aspect of code quality:
-    - **Apollo**: Style guide adherence and code aesthetics
-    - **Hermes**: Readability and communication clarity
-    - **Athena**: Cognitive load reduction and code complexity
-    - **Hestia**: Documentation structure and organization
-    - **Mnemosyne**: Context completeness
-    - **Hephaestus**: Code accuracy and functionality
-    - **Heracles**: Cross-linking and code relationships
-    - **Demeter**: Terminology consistency
-    - **Aphrodite**: Code formatting and visual presentation
-    - **Iris**: Accessibility
-    - **Dionysus**: Visual aid suggestions
-    - **Chronos**: Knowledge decay and outdated patterns
-
-    - **Harmonious Summary**: Harmonia provides an integrated review summary combining all feedback
-
-    - **In-line PR Comments**: Each reviewer's feedback is added as in-line comments at the relevant locations in your code
-
-    ## Setup Instructions
-
-    ### 1. Add the workflow file
-
-    Create a file `.github/workflows/pantheon-review.yml` in your repository with the content from the provided workflow YAML.
-
-    ### 2. Add the pantheon reviewer script
-
-    Save the provided Python script as `pantheon_pr_reviewer.py` in your repository.
-
-    ### 3. Set up secrets
-
-    Add the following secrets to your GitHub repository:
-    - `OPENAI_API_KEY`: Your OpenAI API key
-    """
+    formatted_content = fetch_pr_content(repository, pr_number, github_token)
+    print(formatted_content)
 
     # Define a termination condition that stops the task if a special phrase is mentioned
     text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
