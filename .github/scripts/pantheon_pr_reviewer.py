@@ -432,25 +432,18 @@ harmonia = AssistantAgent(
 #############################
 
 # PR grabber
-def get_pr_details(self, event_path: str) -> Dict[str, Any]:
-    """Extract PR details from the GitHub event payload."""
-    with open(event_path, 'r') as f:
-        event_data = json.load(f)
+def get_pr_details(repository: str, pr_number: int, github_token: str) -> Dict[str, Any]:
+    """Extract PR details from the GitHub repository."""
+    # Initialize GitHub client
+    from github import Github
+    github_client = Github(github_token)
     
-    # For GitHub Actions
-    repo_full_name = event_data.get('repository', {}).get('full_name', '')
-    if '/' in repo_full_name:
-        owner, repo = repo_full_name.split('/')
-    else:
-        # Fallback if not in expected format
-        owner = event_data.get('repository', {}).get('owner', {}).get('login', '')
-        repo = event_data.get('repository', {}).get('name', '')
-    
-    pr_number = event_data.get('number')
-    
-    # Get additional PR details
-    repo_obj = self.github_client.get_repo(f"{owner}/{repo}")
+    # Get repository and PR objects
+    repo_obj = github_client.get_repo(repository)
     pr = repo_obj.get_pull(pr_number)
+    
+    # Split repository name to get owner and repo
+    owner, repo = repository.split('/')
     
     return {
         'owner': owner,
