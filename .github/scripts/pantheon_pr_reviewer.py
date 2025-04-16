@@ -665,18 +665,229 @@ def test_github_connection():
         print(f"Error details: {str(e)}")
         return False
 
-def chunk_text_by_lines(text: str, max_lines: int = 100) -> List[str]:
-    lines = text.split('\n')
-    return ['\n'.join(lines[i:i + max_lines]) for i in range(0, len(lines), max_lines)]
+# File content chunking utilities
+def chunk_file_content(content: str, max_chunk_size: int = 4000) -> List[str]:
+    """
+    Split file content into manageable chunks to avoid API limits.
+    
+    Args:
+        content: The full file content string
+        max_chunk_size: Maximum size for each chunk in characters
+        
+    Returns:
+        List of content chunks
+    """
+    # If content is small enough, return as is
+    if len(content) <= max_chunk_size:
+        return [content]
+    
+    chunks = []
+    current_chunk = ""
+    
+    # Split content by lines
+    lines = content.split('\n')
+    
+    for line in lines:
+        # If adding this line would exceed max size, save current chunk and start a new one
+        if len(current_chunk) + len(line) + 1 > max_chunk_size and current_chunk:
+            chunks.append(current_chunk)
+            current_chunk = line + '\n'
+        else:
+            current_chunk += line + '\n'
+    
+    # Add the last chunk if it has content
+    if current_chunk:
+        chunks.append(current_chunk)
+    
+    return chunks
 
+# Function to post comments in batches to avoid rate limits
+def post_comments_to_PR_in_batches(repo_name: str, pr_number: int, github_token: str, 
+                                  inline_comments: List[Dict], general_comments: List[Dict], 
+                                  batch_size: int = 10, delay: float = 1.0) -> None:
+    """
+    Posts comments to the GitHub PR in batches to avoid rate limits.
+    
+    Args:
+        repo_name: The name of the repository in the format 'owner/repo'
+        pr_number: The PR number to post comments to
+        github_token: GitHub token for authentication
+        inline_comments: List of inline comments to post
+        general_comments: List of general comments to post
+        batch_size: Number of comments to post in each batch
+        delay: Delay in seconds between batches
+    """
+    try:
+        # Initialize GitHub client
+        g = Github(github_token)
+        repo = g.get_repo(repo_name)
+        pull_request = repo.get_pull(pr_number)
+        
+        # Post general comments in batches
+        for i in range(0, len(general_comments), batch_size):
+            batch = general_comments[i:i+batch_size]
+            for comment in batch:
+                deity_name = comment["deity"]
+                filename = comment["filename"]
+                body = comment["body"]
+                
+                full_comment = f"## {deity_name}'s Review of {filename}\n\n{body}"
+                pull_request.create_issue_comment(full_comment)
+                print(f"Posted general comment from {deity_name} for {filename}")
+            
+            # Add delay between batches
+            if i + batch_size < len(general_comments):
+                print(f"Waiting {delay} seconds before posting next batch of comments...")
+                time.sleep(delay)
+        
+        # Get the latest commit to post review comments
+        latest_commit = list(pull_request.get_commits())[-1]
+        
+        # Group comments by filename to batch them
+        comments_by_file = {}
+        for comment in inline_comments:
+            filename = comment["filename"]
+            if filename not in comments_by_file:
+                comments_by_file[filename] = []
+            comments_by_file[filename].append(comment)
+        
+        # Process each file's comments in batches
+        for filename, comments in comments_by_file.items():
+            print(f"Processing {len(comments)} inline comments for {filename}")
+            
+            for i in range(0, len(comments), batch_size):
+                batch = comments[i:i+batch_size]
+                review_comments = []
+                
+                for comment in batch:
+                    deity_name = comment["deity"]
+                    line_number = comment["lineNumber"]
+                    body = comment["body"]
+                    
+                    try:
+                        file_content = repo.get_contents(filename, ref=pull_request.head.ref).decoded_content.decode('utf-8')
+                        lines = file_content.split('\n')
+                        
+                        if line_number > 0 and line_number <= len(lines):
+                            review_comments.append({
+                                "path": filename,
+                                "position": line_number,
+                                "body": f"**{deity_name}**: {body}"
+                            })
+                    except Exception as e:
+                        print(f"Error preparing comment for {filename}:{line_number}: {str(e)}")
+                        fallback_comment = f"**{deity_name}** comment for {filename} line {line_number}:\n\n{body}"
+                        pull_request.create_issue_comment(fallback_comment)
+                
+                # Create the review for this batch if we have comments
+                if review_comments:
+                    try:
+                        pull_request.create_review(
+                            commit=latest_commit,
+                            comments=review_comments,
+                            event="COMMENT"
+                        )
+                        print(f"Posted batch of {len(review_comments)} inline comments to PR")
+                    except Exception as e:
+                        print(f"Error posting review comments: {str(e)}")
+                        for comment in review_comments:
+                            fallback = f"**Inline Comment for {comment['path']}:{comment['position']}**\n\n{comment['body']}"
+                            pull_request.create_issue_comment(fallback)
+                
+                # Add delay between batches
+                if i + batch_size < len(comments):
+                    print(f"Waiting {delay} seconds before posting next batch of comments...")
+                    time.sleep(delay)
+                    
+    except Exception as e:
+        print(f"Error posting comments to PR: {str(e)}")
 
-####################
-# Python functions
-####################
+async def process_file_in_chunks(greek_pantheon_team, filename: str, content: str, max_chunk_size: int = 4000):
+    """
+    Process a file in chunks to avoid API limits.
+    
+    Args:
+        greek_pantheon_team: The RoundRobinGroupChat team to use
+        filename: The name of the file being processed
+        content: The full file content
+        max_chunk_size: Maximum size for each chunk
+        
+    Returns:
+        Combined task results from all chunks
+    """
+    chunks = chunk_file_content(content, max_chunk_size)
+    print(f"Split {filename} into {len(chunks)} chunks for processing")
+    
+    all_chunk_responses = []
+    
+    for i, chunk in enumerate(chunks):
+        print(f"Processing {filename} chunk {i+1}/{len(chunks)}")
+        
+        chunk_task = f"""Your task is to review the following CHUNK {i+1}/{len(chunks)} of file {filename} from a pull request according to your divine domain of expertise. Instructions:
+        - Respond in the following JSON format:
+        {{
+        "inlineReviews": [
+            {{
+            "filename": "{filename}",
+            "lineNumber": <line_number>,
+            "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
+            }}
+        ],
+        "generalReviews": [
+            {{
+            "filename": "{filename}",
+            "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
+            }}
+        ]
+        }}
+        - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
+        - If this is not the final chunk ({i+1} of {len(chunks)}), focus on line-specific feedback only and don't provide a general review yet.
+        - If this is the final chunk ({i+1} of {len(chunks)}), include your general summary comment reflective of your divine personality.
+        - Do NOT wrap the output in triple backticks or any markdown.
+        - DO NOT include explanations or extra commentary.
+        - All comments should reflect your unique personality and domain.
+        - Do not give positive comments or compliments.
+        - Write the comment in GitHub Markdown format.
+        - IMPORTANT: NEVER suggest adding comments to the code.
+
+        Review the following code chunk:
+        
+        {chunk}
+
+        Your feedback should be specific, constructive, and actionable.
+        """
+        
+        # Include a slight delay between chunks to prevent rate limiting
+        if i > 0:
+            await asyncio.sleep(2)
+            
+        # Process this chunk
+        divine_responses = await greek_pantheon_team.run(task=chunk_task)
+        all_chunk_responses.append(divine_responses)
+    
+    return all_chunk_responses
+
+async def combine_chunk_responses(all_chunk_responses):
+    """
+    Combine responses from multiple chunks into a single response.
+    
+    Args:
+        all_chunk_responses: List of responses from each chunk
+        
+    Returns:
+        Combined task results
+    """
+    # Create a new task result to hold all messages
+    combined_result = all_chunk_responses[0]
+    
+    # Add messages from other chunks
+    for chunk_response in all_chunk_responses[1:]:
+        combined_result.messages.extend(chunk_response.messages)
+    
+    return combined_result
 
 # Main function to run the GitHub Action
 async def main() -> None:
-
     # Test Github connection
     if not test_github_connection():
         print("Exiting due to GitHub authentication/connection issues")
@@ -685,8 +896,7 @@ async def main() -> None:
     # Fetch the PR content as a dictionary of files
     print(f"Fetching content for PR #{pr_number} in repository {repository}")
     files_content = fetch_pr_content(repository, pr_number, github_token)
-    print(files_content)
-
+    
     # Define a termination condition that stops the task if a special phrase is mentioned
     text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
 
@@ -697,29 +907,34 @@ async def main() -> None:
     )
 
     all_responses = []
-    # Process each file individually - v2
+    # Process each file individually with chunking
+    print("Starting review process of each file in PR diff with divine pantheon...")
+    
     for filename, content in files_content.items():
         print(f"Processing file: {filename}")
         
-        chunks = chunk_text_by_lines(content, max_lines=80)
-        print(f"{filename} split into {len(chunks)} chunk(s)")
-
-        for i, chunk in enumerate(chunks):
-            chunk_tag = f"{filename} - Part {i + 1}/{len(chunks)}"
-            task = f"""Your task is to review the following file part from a pull request according to your divine domain of expertise. Instructions:
+        # Determine if we need to chunk the file based on size
+        if len(content) > 4000:  # Adjust threshold as needed
+            print(f"File {filename} is large ({len(content)} chars), processing in chunks")
+            chunk_responses = await process_file_in_chunks(greek_pantheon_team, filename, content)
+            combined_response = await combine_chunk_responses(chunk_responses)
+            all_responses.append(combined_response)
+        else:
+            # Process small files without chunking
+            task = f"""Your task is to review the following file from a pull request according to your divine domain of expertise. Instructions:
             - Respond in the following JSON format:
             {{
             "inlineReviews": [
                 {{
                 "filename": "{filename}",
                 "lineNumber": <line_number>,
-                "reviewComment": "[Deity-specific comment]"
+                "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
                 }}
             ],
             "generalReviews": [
                 {{
                 "filename": "{filename}",
-                "reviewComment": "[General feedback from your perspective]"
+                "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
                 }}
             ]
             }}
@@ -731,11 +946,10 @@ async def main() -> None:
             - Do not give positive comments or compliments.
             - Write the comment in GitHub Markdown format.
             - IMPORTANT: NEVER suggest adding comments to the code.
-            
-            Review the following code:
 
-            ### File: {chunk_tag}
-            {chunk}
+            Review the following code:
+            
+            {content}
 
             Your feedback should be specific, constructive, and actionable.
             """
@@ -743,23 +957,25 @@ async def main() -> None:
             # Process this file
             divine_responses = await greek_pantheon_team.run(task=task)
             all_responses.append(divine_responses)
-
-            print(f"Completed review of {filename}")
+        
+        print(f"Completed review of {filename}")
 
     # Parse responses into inline + general comments
-    inline_reviews, general_reviews = parse_task_result_for_reviews(all_responses)
+    all_inline_reviews = []
+    all_general_reviews = []
+    
+    for response in all_responses:
+        inline_reviews, general_reviews = parse_task_result_for_reviews(response)
+        all_inline_reviews.extend(inline_reviews)
+        all_general_reviews.extend(general_reviews)
 
     # Print the parsed results for debugging
-    print("\n Inline Comments:")
-    for comment in inline_reviews:
-        print(comment)
-    print("\n General Summary Comments:")
-    for comment in general_reviews:
-        print(comment)
+    print(f"\nTotal Inline Comments: {len(all_inline_reviews)}")
+    print(f"Total General Summary Comments: {len(all_general_reviews)}")
 
     # Post comments to GitHub PR
     print("Posting comments to GitHub PR...")
-    post_comments_to_pr(repository, pr_number, github_token, inline_reviews, general_reviews)
+    post_comments_to_PR_in_batches(repository, pr_number, github_token, all_inline_reviews, all_general_reviews)
     
     # Print completion message
     print("Documentation review process completed!")
