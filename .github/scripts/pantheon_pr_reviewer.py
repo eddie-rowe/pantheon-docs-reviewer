@@ -455,22 +455,41 @@ def get_pr_details(repository: str, pr_number: int, github_token: str) -> Dict[s
         'pr_obj': pr
     }
 
-# PR diff grabber    
 def get_diff(pr_details: Dict[str, Any], event_data: Dict[str, Any] = None) -> str:
     """Get the diff content based on the event type."""
     if event_data and event_data.get('action') == 'synchronize':
         # For synchronize events, compare the before and after commits
         base_sha = event_data.get('before')
         head_sha = event_data.get('after')
-        
-        repo_obj = pr_details['repo_obj']
-        comparison = repo_obj.compare(base_sha, head_sha)
-        return comparison.diff
-    else:
-        # For opened events or fallback
-        pr_obj = pr_details['pr_obj']
-        return pr_obj.patch
 
+        repo_obj = pr_details['repo_obj']
+        try:
+            comparison = repo_obj.compare(base_sha, head_sha)
+            return comparison.diff
+        except Exception as e:
+            print(f"Error getting diff for synchronize event: {e}")
+            return ""  # Or handle the error as appropriate
+    else:
+        # For opened events or fallback, fetch the diff directly from the PullRequest object
+        pr_obj = pr_details['pr_obj']
+        try:
+            # Depending on your library, you might need to explicitly request the diff
+            # If you are using PyGithub, you might need to access it differently.
+            # One common way is to use the 'diff_url' and make a separate request.
+
+            # Assuming pr_obj is a PyGithub PullRequest object:
+            headers = {'Accept': 'application/vnd.github.v3.diff'}
+            response = pr_obj._requester.get(pr_obj.diff_url, headers=headers)
+            response.raise_for_status()  # Raise an exception for bad status codes
+            return response.text
+
+            # Alternatively, some libraries might have a direct method to get the diff.
+            # Consult your library's documentation.
+
+        except Exception as e:
+            print(f"Error getting diff for non-synchronize event: {e}")
+            return ""  # Or handle the error as appropriate
+        
 # PR diff parser
 def parse_diff(diff_content: str) -> List[Dict[str, Any]]:
     """Parse the diff content into files and chunks."""
