@@ -412,17 +412,12 @@ harmonia = AssistantAgent(
     - Ensuring all feedback is properly attributed to the deity who provided it
     - Ensure the summary report contains the respective information from all 12 divine reviewers
 
-    Your summary report should be formatted as:
-    /* 
-    * [DEITY: Deity name (Domain)]
-    * [SCORE: 0-100] 
-    * 
-    * Feedback details...
-    */
-
     End your summary with a statement about the harmony (or lack thereof) among the divine perspectives, 
     such as "The divine chorus offers a balanced harmony of perspectives, though several competing melodies 
     require resolution before perfection can be achieved."
+
+    Finally, at the bottom of your review, score the overall code quality on a scale of 0-100, where 100 is perfect harmony between reviewers.
+    Assume high standards for production code. Output the score in the following format: "SCORE: [0-100]".
 
     Once the summary is complete, please conclude with 'DOCUMENTATION REVIEW COMPLETE'.
     """
@@ -1108,11 +1103,13 @@ Your feedback should be specific, constructive, and actionable.
 
 
 ####################
-# PyGithub functions
+# Python functions
 ####################
 
 # Main function to run the GitHub Action
 async def main() -> None:
+
+    # Fetch the PR content
 
     # Run the review
     divine_responses = await greek_pantheon_team.run(task=task)
@@ -1121,92 +1118,19 @@ async def main() -> None:
     inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
 
     # Print the parsed results
-    print("\n🔍 Inline Comments:")
+    print("\n Inline Comments:")
     for comment in inline_reviews:
         print(comment)
-
-    print("\n📜 General Summary Comments:")
+    print("\n General Summary Comments:")
     for comment in general_reviews:
         print(comment)
 
-    # Close the connection to the model client
-    await model_client.close()
-    
-    #print(divine_responses)
-
-    #return divine_responses
-
-
-
-
-async def run_review_and_comment(token: str, repo_name: str, pr_number: int):
-    """
-    Run the divine review panel and post comments to GitHub PR.
-    
-    Args:
-        token: GitHub personal access token
-        repo_name: Repository name in format "username/repo"
-        pr_number: PR number to comment on
-    """
-    
-    # Fetch PR content
-    pr_fetcher = PRContentFetcher(token, repo_name, pr_number)
-    formatted_content, files_dict = pr_fetcher.process_pr_content()
-
-    #######################################
-    # AutoGen team and behavior definitions
-    #######################################
-
-    # Define a termination condition that stops the task if a special phrase is mentioned
-    text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
-
-    # Create a team with all the Greek gods and goddesses
-    greek_pantheon_team = RoundRobinGroupChat(
-        [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
-        termination_condition=text_termination
-    )
-
-    # Create the task description with the PR content
-    task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
-    - Provide the response in following JSON format:  {{"reviews": [{{"lineNumber":  <line_number>, "reviewComment": "<review comment>"}}]}}
-    - Do not give positive comments or compliments.
-    - Write the comment in GitHub Markdown format.
-    - IMPORTANT: NEVER suggest adding comments to the code.
-    - IMPORTANT: When referring to specific code, please include the filename and line number in this format: [SECTION: filename:line_number]
-
-    Review the following code diff:
-    {formatted_content}
-
-    Your feedback should be specific, constructive, and actionable.
-    """
-       
-    # Run the review
-    divine_responses = await greek_pantheon_team.run(task=task)
-    
-    # Parse the reviews
-    parser = DeityReviewParser(divine_responses.messages, files_dict)
-    deity_reviews = parser.parse_reviews()
-    
     # Post comments to GitHub PR
-    reviewer = GitHubPRReviewer(token, repo_name, pr_number)
-    reviewer.add_file_line_comments(parser.file_line_reviews, files_dict)
-    reviewer.add_section_comments(parser.section_reviews, files_dict)
-    reviewer.add_summary_comment(deity_reviews, parser.combined_scores)
-    
+
     # Close the connection to the model client
     await model_client.close()
     
-    return divine_responses
-
-
-# Entry point for the GitHub Action - v2
+# Entry point for the GitHub Action
 if __name__ == "__main__":
     # Run the main process
     asyncio.run(main())
-
-    # Run the review and comment process
-    #asyncio.run(run_review_and_comment(
-    #    token=github_token,
-    #    repo_name=repository,
-    #    pr_number=pr_number
-    #))
