@@ -17,9 +17,9 @@ from typing import Dict, List, Tuple, Optional
 ####################
 
 # Get GitHub action inputs
-#github_token = os.environ["INPUT_GITHUB_TOKEN"]
-#repository = os.environ["GITHUB_REPOSITORY"]
-#pr_number = int(os.environ["INPUT_PR_NUMBER"])
+github_token = os.environ["INPUT_GITHUB_TOKEN"]
+repository = os.environ["GITHUB_REPOSITORY"]
+pr_number = int(os.environ["INPUT_PR_NUMBER"])
 
 ###################################
 # AutoGen model client definitions
@@ -424,559 +424,67 @@ harmonia = AssistantAgent(
 )
 
 
-##########################
-# Custom class definitions
-##########################
+#############################
+# Helper function definitions
+#############################
 
-# The new classes from Claude - v2    
-class PRContentFetcher:
-    """Class for fetching PR content and processing the diff."""
+# Github PR diff fetcher
+def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> str:
+    """
+    Fetches the PR content from GitHub.
     
-    def __init__(self, token: str, repo_name: str, pr_number: int):
-        """
-        Initialize the PR content fetcher.
+    Args:
+        repo_name: The name of the repository in the format 'owner/repo'
+        pr_number: The PR number to fetch
+        github_token: GitHub token for authentication
         
-        Args:
-            token: GitHub personal access token
-            repo_name: Repository name in format "username/repo"
-            pr_number: PR number to fetch content from
-        """
-        self.g = Github(token)
-        self.repo = self.g.get_repo(repo_name)
-        self.pr = self.repo.get_pull(pr_number)
+    Returns:
+        The formatted content of the PR diff
+    """
+    try:
+        # Initialize GitHub client
+        g = Github(github_token)
         
-    def fetch_pr_diff(self) -> str:
-        """
-        Fetch the raw diff of the PR.
+        # Get the repository
+        repo = g.get_repo(repo_name)
         
-        Returns:
-            Raw diff content as a string
-        """
-        return self.pr.get_diff().decoded_content.decode('utf-8')
-    
-    def fetch_pr_files(self) -> Dict[str, Dict]:
-        """
-        Fetch all files changed in the PR with their content.
+        # Get the pull request
+        pull_request = repo.get_pull(pr_number)
         
-        Returns:
-            Dictionary mapping file paths to dictionaries containing file content and patch
-        """
-        files_dict = {}
-        files = self.pr.get_files()
+        # Get the files changed in the PR
+        files_changed = pull_request.get_files()
         
-        for file in files:
-            # Get the file content from the PR head (latest version)
-            try:
-                content = self.repo.get_contents(file.filename, ref=self.pr.head.ref).decoded_content.decode('utf-8')
-            except Exception:
-                content = "File content could not be retrieved"
-            
-            files_dict[file.filename] = {
-                "content": content,
-                "patch": file.patch,
-                "status": file.status,  # 'added', 'removed', 'modified', etc.
-                "changes": file.changes,
-                "additions": file.additions,
-                "deletions": file.deletions
-            }
-        
-        return files_dict
-    
-    def process_pr_content(self) -> Tuple[str, Dict[str, Dict]]:
-        """
-        Process PR content for review by the divine team.
-        
-        Returns:
-            Tuple containing:
-            - Formatted PR content as a string
-            - Dictionary of file contents for reference
-        """
-        files_dict = self.fetch_pr_files()
-        pr_description = self.pr.body or "No description provided"
-        
-        # Format PR content for review
-        formatted_content = f"# PR #{self.pr.number}: {self.pr.title}\n\n"
-        formatted_content += f"## Description\n{pr_description}\n\n"
-        formatted_content += f"## Changes\n\n"
-        
-        for filename, file_info in files_dict.items():
-            formatted_content += f"### File: {filename}\n"
-            formatted_content += f"Status: {file_info['status']}, " 
-            formatted_content += f"Changes: +{file_info['additions']}, -{file_info['deletions']}\n\n"
-            
-            if file_info['patch']:
-                formatted_content += "```diff\n"
-                formatted_content += file_info['patch']
-                formatted_content += "\n```\n\n"
-            else:
-                formatted_content += "No diff available for this file.\n\n"
-        
-        return formatted_content, files_dict
-
-class DiffParser:
-    """Class for parsing git diffs and mapping line numbers."""
-    
-    @staticmethod
-    def parse_patch(patch: str) -> Dict[int, int]:
-        """
-        Parse a git patch to map original file line numbers to PR line numbers.
-        
-        Args:
-            patch: The git patch string
-        
-        Returns:
-            Dictionary mapping original line numbers to PR position numbers
-        """
-        line_map = {}
-        file_line = 0
-        position = 0
-        
-        lines = patch.split('\n')
-        for i, line in enumerate(lines):
-            if line.startswith('@@'):
-                # Parse the @@ -a,b +c,d @@ line to get starting line numbers
-                match = re.match(r'^@@ -\d+,\d+ \+(\d+),\d+ @@', line)
-                if match:
-                    file_line = int(match.group(1)) - 1
-                position = i
-            elif not line.startswith('-'):
-                # This is a line that appears in the new file
-                file_line += 1
-                position += 1
-                if not line.startswith('+'):
-                    # This line exists in both old and new file
-                    line_map[file_line] = position
-                else:
-                    # This is a new line in the PR
-                    line_map[file_line] = position
-        
-        return line_map
-    
-    @staticmethod
-    def extract_sections_from_diff(patch: str) -> List[Dict]:
-        """
-        Extract meaningful sections from a git diff.
-        
-        Args:
-            patch: The git patch string
-        
-        Returns:
-            List of dictionaries containing section information
-        """
-        sections = []
-        current_section = None
-        current_lines = []
-        line_number = 0
-        
-        lines = patch.split('\n')
-        for line in lines:
-            if line.startswith('@@'):
-                # Start a new section
-                if current_section:
-                    current_section['lines'] = current_lines
-                    sections.append(current_section)
-                
-                match = re.match(r'^@@ -\d+,\d+ \+(\d+),\d+ @@\s*(.*)', line)
-                if match:
-                    line_number = int(match.group(1)) - 1
-                    section_name = match.group(2).strip() if match.group(2) else "Unnamed section"
-                    current_section = {
-                        'name': section_name,
-                        'start_line': line_number,
-                        'lines': []
-                    }
-                    current_lines = []
-            elif current_section is not None:
-                if not line.startswith('-'):
-                    line_number += 1
-                    if line.startswith('+'):
-                        # Added line
-                        current_lines.append({
-                            'content': line[1:],
-                            'line_number': line_number,
-                            'type': 'added'
-                        })
-                    else:
-                        # Context line
-                        current_lines.append({
-                            'content': line,
-                            'line_number': line_number,
-                            'type': 'context'
-                        })
-        
-        # Add the last section
-        if current_section:
-            current_section['lines'] = current_lines
-            sections.append(current_section)
-        
-        return sections
-
-class DeityReviewParser:
-    """Class for parsing and organizing deity feedback."""
-    
-    def __init__(self, messages, files_dict=None):
-        """
-        Initialize the parser with the chat messages.
-        
-        Args:
-            messages: List of message dictionaries from the group chat
-            files_dict: Dictionary of file contents for reference
-        """
-        self.messages = messages
-        self.files_dict = files_dict or {}
-        self.deity_reviews = {}
-        self.section_reviews = {}
-        self.file_line_reviews = {}
-        self.combined_scores = {}
-        
-    def parse_reviews(self) -> Dict:
-        """
-        Parse the reviews from the chat messages.
-        
-        Returns:
-            Dictionary of parsed reviews by deity
-        """
-        for message in self.messages:
-            if message.source != "user" and message.source != "Harmonia":
-                deity_name = message.source
-                content = message.content
-                
-                # Extract score if present
-                score_match = re.search(r'\*\*SCORE:\s*(\d+|N/A)\*\*', content)
-                score = score_match.group(1) if score_match else "N/A"
-                
-                # Store the review content and score
-                self.deity_reviews[deity_name] = {
-                    "content": content,
-                    "score": score
-                }
-                
-                # Extract file-specific reviews
-                self._extract_file_specific_reviews(deity_name, content, score)
-                
-        # Calculate average scores by deity
-        for deity, review in self.deity_reviews.items():
-            if review["score"] != "N/A":
-                try:
-                    self.combined_scores[deity] = int(review["score"])
-                except ValueError:
-                    pass
-        
-        return self.deity_reviews
-    
-    def _extract_file_specific_reviews(self, deity_name: str, content: str, score: str):
-        """
-        Extract file and line specific reviews from the content.
-        
-        Args:
-            deity_name: Name of the deity providing the review
-            content: Review content
-            score: Review score
-        """
-        # Look for file references
-        file_patterns = [
-            r'File:\s*([^\n,]+)',
-            r'file\s+([^\n,]+)',
-            r'in\s+([^\s]+\.(py|js|ts|css|html|md|txt|json))',
-        ]
-        
-        for pattern in file_patterns:
-            file_matches = re.finditer(pattern, content, re.IGNORECASE)
-            for file_match in file_matches:
-                filename = file_match.group(1).strip()
-                
-                # Look for line number references near this file mention
-                line_context = content[file_match.start():file_match.start() + 300]
-                line_matches = re.finditer(r'[Ll]ine\s+(\d+)', line_context)
-                
-                for line_match in line_matches:
-                    line_num = int(line_match.group(1))
-                    
-                    # Find the issue and recommendation in this vicinity
-                    issue_context = line_context[line_match.start():line_match.start() + 300]
-                    comment = self._extract_comment_from_context(issue_context)
-                    
-                    file_line_key = f"{filename}:{line_num}"
-                    if file_line_key not in self.file_line_reviews:
-                        self.file_line_reviews[file_line_key] = []
-                    
-                    self.file_line_reviews[file_line_key].append({
-                        "deity": deity_name,
-                        "comment": comment,
-                        "score": score
-                    })
-        
-        # Also check for line-only references (when file is implied)
-        line_matches = re.finditer(r'[Ll]ine\s+(\d+)', content)
-        for line_match in line_matches:
-            line_num = int(line_match.group(1))
-            
-            # Look for quoted content after this line reference
-            quoted_content = self._find_quoted_content_after_match(content, line_match)
-            if quoted_content:
-                comment = self._extract_comment_for_quote(content, quoted_content, line_match.end())
-                
-                # Since we don't know the file, use a generic key
-                key = f"line:{line_num}"
-                if key not in self.section_reviews:
-                    self.section_reviews[key] = []
-                
-                self.section_reviews[key].append({
-                    "deity": deity_name,
-                    "comment": comment,
-                    "score": score
-                })
-    
-    def _find_quoted_content_after_match(self, content: str, match) -> Optional[str]:
-        """Find quoted content after a regex match."""
-        start_idx = match.end()
-        remaining = content[start_idx:start_idx + 300]  # Look at the next 300 chars
-        
-        # Try quoted content patterns
-        patterns = [
-            r'"([^"]+)"',          # Double quotes
-            r'\'([^\']+)\'',       # Single quotes
-            r'`([^`]+)`',          # Backticks
-            r'Content:\s*"?([^"\n]+)"?',  # Content: label
-            r'Text:\s*"?([^"\n]+)"?',     # Text: label
-            r'Quoted Content:\s*"?([^"\n]+)"?',  # Quoted Content: label
-            r'Current:\s*"?([^"\n]+)"?',  # Current: label
-        ]
-        
-        for pattern in patterns:
-            quote_match = re.search(pattern, remaining)
-            if quote_match:
-                for group in quote_match.groups():
-                    if group:
-                        return group.strip()
-        
-        return None
-    
-    def _extract_comment_from_context(self, context: str) -> str:
-        """Extract review comment from a context string."""
-        # Look for issue/concern patterns
-        issue_patterns = [
-            r'(?:Issue|Concern|Challenge|Opportunity):\s*([^\n]+)',
-            r'(?:Why it challenges readers):\s*([^\n]+)',
-            r'(?:Cognitive Overload Concern):\s*([^\n]+)',
-        ]
-        
-        # Look for recommendation patterns
-        rec_patterns = [
-            r'(?:Recommendation|Suggestion|Corrected Alternative|Simplified Version):\s*([^\n]+)',
-            r'(?:Guideline):\s*([^\n]+)',
-        ]
-        
-        comment = ""
-        
-        # Extract issue
-        for pattern in issue_patterns:
-            issue_match = re.search(pattern, context)
-            if issue_match:
-                comment += f"Issue: {issue_match.group(1).strip()}\n"
-                break
-        
-        # Extract recommendation
-        for pattern in rec_patterns:
-            rec_match = re.search(pattern, context)
-            if rec_match:
-                comment += f"Suggestion: {rec_match.group(1).strip()}"
-                break
-        
-        # If still no comment, extract a general chunk of text
-        if not comment:
-            # Find paragraphs after potential issue indicators
-            indicators = ["Issue", "Problem", "Error", "Concern", "Challenge"]
-            for indicator in indicators:
-                indicator_match = re.search(f'{indicator}[s]?[:\.\s]', context, re.IGNORECASE)
-                if indicator_match:
-                    start_idx = indicator_match.end()
-                    end_idx = context.find("\n\n", start_idx)
-                    if end_idx == -1:
-                        end_idx = len(context)
-                    comment = context[start_idx:end_idx].strip()
-                    break
-        
-        # If still no comment, take the first substantial paragraph
-        if not comment:
-            paragraphs = re.split(r'\n\s*\n', context)
-            for para in paragraphs:
-                cleaned = para.strip()
-                if len(cleaned) > 30 and not cleaned.startswith('#') and not cleaned.startswith('-'):
-                    comment = cleaned
-                    break
-        
-        # If still nothing, use a generic message
-        if not comment:
-            comment = "See general feedback for details"
-            
-        return comment
-    
-    def _extract_comment_for_quote(self, content: str, quoted_text: str, start_offset: int = 0) -> str:
-        """Extract the comment related to a quoted piece of text."""
-        start_idx = content.find(quoted_text, start_offset)
-        if start_idx == -1:
-            return "See general feedback"
-        
-        # Look for the next section in the review (within 500 chars after the quote)
-        remaining = content[start_idx + len(quoted_text):start_idx + len(quoted_text) + 500]
-        
-        return self._extract_comment_from_context(remaining)
-
-class GitHubPRReviewer:
-    """Class for posting review comments to GitHub PR."""
-    
-    def __init__(self, token: str, repo_name: str, pr_number: int):
-        """
-        Initialize the GitHub PR reviewer.
-        
-        Args:
-            token: GitHub personal access token
-            repo_name: Repository name in format "username/repo"
-            pr_number: PR number to comment on
-        """
-        self.g = Github(token)
-        self.repo = self.g.get_repo(repo_name)
-        self.pr = self.repo.get_pull(pr_number)
-        
-    def add_file_line_comments(self, file_line_reviews: Dict[str, List[Dict]], files_dict: Dict[str, Dict]):
-        """
-        Add comments to specific file lines in the PR.
-        
-        Args:
-            file_line_reviews: Dictionary mapping "file:line" to lists of review comments
-            files_dict: Dictionary of file contents and patches
-        """
-        # Create a map of filename to DiffParser results
-        file_maps = {}
-        for filename, file_info in files_dict.items():
-            if file_info.get('patch'):
-                file_maps[filename] = DiffParser.parse_patch(file_info['patch'])
-        
-        # Process each file:line comment
-        for file_line_key, reviews in file_line_reviews.items():
-            if ':' not in file_line_key:
+        # Format the content into a readable diff format
+        formatted_content = ""
+        for file in files_changed:
+            # Skip binary files and removed files
+            if file.status == "removed" or file.patch is None:
                 continue
                 
-            filename, line_str = file_line_key.split(':', 1)
-            try:
-                line_num = int(line_str)
-            except ValueError:
-                continue
+            formatted_content += f"\n### File: {file.filename}\n"
+            formatted_content += f"Status: {file.status}\n"
+            formatted_content += "```diff\n"
+            formatted_content += file.patch
+            formatted_content += "\n```\n"
             
-            # Check if we can map this file/line to a position in the PR
-            if filename in file_maps and line_num in file_maps[filename]:
-                position = file_maps[filename][line_num]
-                
-                # Combine the deity comments for this line
-                comment_body = f"## Divine Review Panel Feedback for Line {line_num}\n\n"
-                
-                for review in reviews:
-                    comment_body += f"### {review['deity']} (Score: {review['score']})\n"
-                    comment_body += f"{review['comment']}\n\n"
-                
-                # Add the comment to the PR
+            # If it's a new or modified file, also get the full content
+            if file.status in ["added", "modified"]:
                 try:
-                    self.pr.create_review_comment(
-                        body=comment_body,
-                        commit_id=self.pr.get_commits().get_page(0)[-1].sha,
-                        path=filename,
-                        position=position
-                    )
+                    file_content = repo.get_contents(file.filename, ref=pull_request.head.ref).decoded_content.decode('utf-8')
+                    formatted_content += f"\n### Full content of {file.filename}:\n"
+                    formatted_content += "```\n"
+                    formatted_content += file_content
+                    formatted_content += "\n```\n"
                 except Exception as e:
-                    print(f"Error creating review comment for {file_line_key}: {e}")
-    
-    def add_section_comments(self, section_reviews: Dict, files_dict: Dict[str, Dict]):
-        """
-        Add comments to sections where file is unknown but line is known.
+                    formatted_content += f"\nCould not get full content: {str(e)}\n"
         
-        Args:
-            section_reviews: Dictionary mapping section keys to lists of review comments
-            files_dict: Dictionary of file contents and patches
-        """
-        # For lines without explicit file references, try to map to all changed files
-        for key, reviews in section_reviews.items():
-            if key.startswith("line:"):
-                line_num = int(key.split(":", 1)[1])
-                
-                # Try to find this line in each file
-                for filename, file_info in files_dict.items():
-                    if file_info.get('patch'):
-                        line_map = DiffParser.parse_patch(file_info['patch'])
-                        if line_num in line_map:
-                            # Found a matching line, add the comment
-                            position = line_map[line_num]
-                            
-                            comment_body = f"## Divine Review Panel Feedback for Line {line_num}\n\n"
-                            
-                            for review in reviews:
-                                comment_body += f"### {review['deity']} (Score: {review['score']})\n"
-                                comment_body += f"{review['comment']}\n\n"
-                            
-                            try:
-                                self.pr.create_review_comment(
-                                    body=comment_body,
-                                    commit_id=self.pr.get_commits().get_page(0)[-1].sha,
-                                    path=filename,
-                                    position=position
-                                )
-                            except Exception as e:
-                                print(f"Error creating review comment for {key} in {filename}: {e}")
-    
-    def add_summary_comment(self, deity_reviews: Dict, combined_scores: Dict):
-        """
-        Add a summary comment to the PR with overall feedback.
+        return formatted_content
         
-        Args:
-            deity_reviews: Dictionary of deity reviews
-            combined_scores: Dictionary of deity scores
-        """
-        # Calculate average score
-        if combined_scores:
-            avg_score = sum(combined_scores.values()) / len(combined_scores)
-        else:
-            avg_score = "N/A"
-        
-        # Create summary comment
-        comment = f"# Divine Review Panel: Summary Report\n\n"
-        comment += f"## Overall Assessment\n"
-        comment += f"Average Score: {avg_score if avg_score != 'N/A' else 'N/A'}/100\n\n"
-        
-        comment += "## Individual Deity Assessments\n\n"
-        for deity, score in combined_scores.items():
-            comment += f"- **{deity}**: {score}/100\n"
-        
-        comment += "\n## Key Observations\n\n"
-        
-        # Extract key takeaways from each deity
-        for deity, review in deity_reviews.items():
-            content = review["content"]
-            
-            # Try to find the conclusion paragraph
-            conclusion = None
-            if "\"" in content:
-                quote_matches = list(re.finditer(r'"([^"]+)"', content))
-                if quote_matches:
-                    # Get the last quote which is often the conclusion
-                    conclusion = quote_matches[-1].group(1)
-            
-            if not conclusion:
-                paragraphs = content.split("\n\n")
-                for para in reversed(paragraphs):
-                    if para and "SCORE" not in para and len(para) > 30:
-                        conclusion = para
-                        break
-            
-            if conclusion:
-                comment += f"### {deity}\n"
-                comment += f"{conclusion}\n\n"
-        
-        # Add the summary comment to the PR
-        self.pr.create_issue_comment(comment)
+    except Exception as e:
+        print(f"Error fetching PR content: {str(e)}")
+        return f"Error fetching PR content: {str(e)}"
 
-
-
-
+# JSON parser
 def parse_task_result_for_reviews(task_result):
     all_inline_comments = []
     all_general_comments = []
@@ -1010,6 +518,95 @@ def parse_task_result_for_reviews(task_result):
 
     return all_inline_comments, all_general_comments
 
+# Github PR comment poster
+def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str, 
+                         inline_comments: List[Dict], general_comments: List[Dict]) -> None:
+    """
+    Posts comments to the GitHub PR.
+    
+    Args:
+        repo_name: The name of the repository in the format 'owner/repo'
+        pr_number: The PR number to post comments to
+        github_token: GitHub token for authentication
+        inline_comments: List of inline comments to post
+        general_comments: List of general comments to post
+    """
+    try:
+        # Initialize GitHub client
+        g = Github(github_token)
+        
+        # Get the repository
+        repo = g.get_repo(repo_name)
+        
+        # Get the pull request
+        pull_request = repo.get_pull(pr_number)
+        
+        # Post general comments as PR comments
+        for comment in general_comments:
+            deity_name = comment["deity"]
+            filename = comment["filename"]
+            body = comment["body"]
+            
+            full_comment = f"## {deity_name}'s Review of {filename}\n\n{body}"
+            pull_request.create_issue_comment(full_comment)
+            print(f"Posted general comment from {deity_name} for {filename}")
+        
+        # Post inline comments
+        # We need to get the latest commit to post review comments
+        latest_commit = list(pull_request.get_commits())[-1]
+        
+        # Group comments by filename to batch them
+        comments_by_file = {}
+        for comment in inline_comments:
+            filename = comment["filename"]
+            if filename not in comments_by_file:
+                comments_by_file[filename] = []
+            comments_by_file[filename].append(comment)
+        
+        # Create a review with all comments
+        review_comments = []
+        for filename, comments in comments_by_file.items():
+            for comment in comments:
+                deity_name = comment["deity"]
+                line_number = comment["lineNumber"]
+                body = comment["body"]
+                
+                # Try to get the file content to find the right position
+                try:
+                    file_content = repo.get_contents(filename, ref=pull_request.head.ref).decoded_content.decode('utf-8')
+                    lines = file_content.split('\n')
+                    
+                    # Ensure line_number is within bounds
+                    if line_number > 0 and line_number <= len(lines):
+                        review_comments.append({
+                            "path": filename,
+                            "position": line_number,  # This is simplified - GitHub API requires diff position
+                            "body": f"**{deity_name}**: {body}"
+                        })
+                except Exception as e:
+                    print(f"Error preparing comment for {filename}:{line_number}: {str(e)}")
+                    # Fall back to PR comment if we can't post an inline comment
+                    fallback_comment = f"**{deity_name}** comment for {filename} line {line_number}:\n\n{body}"
+                    pull_request.create_issue_comment(fallback_comment)
+        
+        # Create the review if we have comments
+        if review_comments:
+            try:
+                pull_request.create_review(
+                    commit=latest_commit,
+                    comments=review_comments,
+                    event="COMMENT"
+                )
+                print(f"Posted {len(review_comments)} inline comments to PR")
+            except Exception as e:
+                print(f"Error posting review comments: {str(e)}")
+                # Fall back to issue comments
+                for comment in review_comments:
+                    fallback = f"**Inline Comment for {comment['path']}:{comment['position']}**\n\n{comment['body']}"
+                    pull_request.create_issue_comment(fallback)
+        
+    except Exception as e:
+        print(f"Error posting comments to PR: {str(e)}")
  
 #######################################
 # AutoGen team and behavior definitions
@@ -1024,52 +621,8 @@ greek_pantheon_team = RoundRobinGroupChat(
     termination_condition=text_termination
 )
 
-# Example diff
-formatted_content = """
---- README.md
-
-# Divine Pantheon GitHub PR Reviewer
-
-This GitHub Action combines the power of an autogen "pantheon" of specialized AI reviewers with GitHub's PR review capabilities. Each "deity" reviewer specializes in a different aspect of code quality and provides tailored feedback directly on your pull requests.
-
-## Features
-
-- **Specialized Review Domains**: Each AI reviewer (deity) focuses on a specific aspect of code quality:
-  - **Apollo**: Style guide adherence and code aesthetics
-  - **Hermes**: Readability and communication clarity
-  - **Athena**: Cognitive load reduction and code complexity
-  - **Hestia**: Documentation structure and organization
-  - **Mnemosyne**: Context completeness
-  - **Hephaestus**: Code accuracy and functionality
-  - **Heracles**: Cross-linking and code relationships
-  - **Demeter**: Terminology consistency
-  - **Aphrodite**: Code formatting and visual presentation
-  - **Iris**: Accessibility
-  - **Dionysus**: Visual aid suggestions
-  - **Chronos**: Knowledge decay and outdated patterns
-
-- **Harmonious Summary**: Harmonia provides an integrated review summary combining all feedback
-
-- **In-line PR Comments**: Each reviewer's feedback is added as in-line comments at the relevant locations in your code
-
-## Setup Instructions
-
-### 1. Add the workflow file
-
-Create a file `.github/workflows/pantheon-review.yml` in your repository with the content from the provided workflow YAML.
-
-### 2. Add the pantheon reviewer script
-
-Save the provided Python script as `pantheon_pr_reviewer.py` in your repository.
-
-### 3. Set up secrets
-
-Add the following secrets to your GitHub repository:
-- `OPENAI_API_KEY`: Your OpenAI API key
-"""
-
-# Create the task description with the PR content
-task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
+# Create the task description without the PR content - it will be formatted later
+task = """Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
 - Respond in the following JSON format:
 {{
   "inlineReviews": [
@@ -1110,14 +663,20 @@ Your feedback should be specific, constructive, and actionable.
 async def main() -> None:
 
     # Fetch the PR content
+    print(f"Fetching content for PR #{pr_number} in repository {repository}")
+    formatted_content = fetch_pr_content(repository, pr_number, github_token)
+
+    # Update the task with the PR content
+    full_task = task.format(formatted_content=formatted_content)
 
     # Run the review
-    divine_responses = await greek_pantheon_team.run(task=task)
+    print("Starting review process with divine pantheon...")
+    divine_responses = await greek_pantheon_team.run(task=full_task)
 
     # Parse responses into inline + general comments
     inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
 
-    # Print the parsed results
+    # Print the parsed results for debugging
     print("\n Inline Comments:")
     for comment in inline_reviews:
         print(comment)
@@ -1126,9 +685,15 @@ async def main() -> None:
         print(comment)
 
     # Post comments to GitHub PR
+    print("Posting comments to GitHub PR...")
+    post_comments_to_pr(repository, pr_number, github_token, inline_reviews, general_reviews)
+    
+    # Print completion message
+    print("Documentation review process completed!")
 
     # Close the connection to the model client
     await model_client.close()
+
     
 # Entry point for the GitHub Action
 if __name__ == "__main__":
