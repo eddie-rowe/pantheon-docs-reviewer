@@ -6,6 +6,9 @@ from autogen_core import CancellationToken
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from autogen_agentchat.conditions import TextMentionTermination
 from autogen_agentchat.messages import TextMessage
+import unidiff
+import glob
+import argparse
 import os
 import re
 import json
@@ -428,93 +431,93 @@ harmonia = AssistantAgent(
 # Helper function definitions
 #############################
 
-# Github PR diff fetcher
-def fetch_pr_content(repo_name: str, pr_number: int, github_token: str) -> Dict[str, str]:
-    """
-    Fetches the PR content from GitHub.
+# PR grabber
+def get_pr_details(self, event_path: str) -> Dict[str, Any]:
+    """Extract PR details from the GitHub event payload."""
+    with open(event_path, 'r') as f:
+        event_data = json.load(f)
     
-    Args:
-        repo_name: The name of the repository in the format 'owner/repo'
-        pr_number: The PR number to fetch
-        github_token: GitHub token for authentication
-        
-    Returns:
-        Dictionary mapping filenames to their content
-    """
-    try:
-        # Initialize GitHub client
-        g = Github(github_token)
-        
-        # Get the repository
-        repo = g.get_repo(repo_name)
-        print(f"Successfully connected to repository: {repo_name}")
-        
-        # Get the pull request
-        pull_request = repo.get_pull(pr_number)
-        print(f"Found PR #{pr_number}: {pull_request.title}")
-        
-        # Get the files changed in the PR
-        files_changed = list(pull_request.get_files())
-        print(f"PR contains {len(files_changed)} changed files")
-        
-        if len(files_changed) == 0:
-            return {"No files changed": "No files were changed in this PR."}
-        
-        # Create a dictionary to store file contents
-        files_content = {}
-        
-        for file in files_changed:
-            print(f"Processing file: {file.filename} (Status: {file.status})")
-            
-            # Skip binary files and removed files
-            if file.status == "removed" or file.patch is None:
-                print(f"Skipping file {file.filename}: status={file.status}, patch={file.patch is None}")
-                continue
-                
-            # Start with the diff information
-            file_content = f"### File: {file.filename}\n"
-            file_content += f"Status: {file.status}\n"
-            file_content += "```diff\n"
-            file_content += file.patch
-            file_content += "\n```\n"
-            
-            # If it's a new or modified file, also get the full content
-            if file.status in ["added", "modified"]:
-                try:
-                    full_file_content = repo.get_contents(file.filename, ref=pull_request.head.ref)
-                    print(f"Retrieved content for {file.filename}, size: {full_file_content.size} bytes")
-                    
-                    # Skip very large files
-                    if full_file_content.size > 1000000:  # 1MB limit
-                        file_content += f"\n### Full content of {file.filename} (truncated - file too large)\n"
-                    else:
-                        try:
-                            decoded_content = full_file_content.decoded_content.decode('utf-8')
-                            file_content += f"\n### Full content of {file.filename}:\n"
-                            file_content += "```\n"
-                            file_content += decoded_content
-                            file_content += "\n```\n"
-                        except UnicodeDecodeError:
-                            print(f"Could not decode {file.filename} as UTF-8, likely a binary file")
-                            file_content += f"\n### Full content of {file.filename} (binary file, content omitted)\n"
-                except Exception as e:
-                    error_msg = f"\nCould not get full content of {file.filename}: {str(e)}\n"
-                    print(error_msg)
-                    file_content += error_msg
-            
-            files_content[file.filename] = file_content
-        
-        print(f"Completed processing PR content, total files: {len(files_content)}")
-        if len(files_content) == 0:
-            return {"No valid files": "Could not extract any content from the PR files."}
-            
-        return files_content
-        
-    except Exception as e:
-        error_msg = f"Error fetching PR content: {str(e)}"
-        print(error_msg)
-        return {"Error": error_msg}   
+    # For GitHub Actions
+    repo_full_name = event_data.get('repository', {}).get('full_name', '')
+    if '/' in repo_full_name:
+        owner, repo = repo_full_name.split('/')
+    else:
+        # Fallback if not in expected format
+        owner = event_data.get('repository', {}).get('owner', {}).get('login', '')
+        repo = event_data.get('repository', {}).get('name', '')
     
+    pr_number = event_data.get('number')
+    
+    # Get additional PR details
+    repo_obj = self.github_client.get_repo(f"{owner}/{repo}")
+    pr = repo_obj.get_pull(pr_number)
+    
+    return {
+        'owner': owner,
+        'repo': repo,
+        'pull_number': pr_number,
+        'title': pr.title,
+        'description': pr.body or '',
+        'repo_obj': repo_obj,
+        'pr_obj': pr
+    }
+
+# PR diff grabber
+def get_diff(self, pr_details: Dict[str, Any], event_data: Dict[str, Any] = None) -> str:
+    """Get the diff content based on the event type."""
+    if event_data and event_data.get('action') == 'synchronize':
+        # For synchronize events, compare the before and after commits
+        base_sha = event_data.get('before')
+        head_sha = event_data.get('after')
+        
+        repo_obj = pr_details['repo_obj']
+        comparison = repo_obj.compare(base_sha, head_sha)
+        return comparison.diff
+    else:
+        # For opened events or fallback
+        pr_obj = pr_details['pr_obj']
+        return pr_obj.diff
+
+# PR diff parser
+def parse_diff(self, diff_content: str) -> List[Dict[str, Any]]:
+    """Parse the diff content into files and chunks."""
+    patch_set = unidiff.PatchSet(diff_content.splitlines())
+    parsed_files = []
+    
+    for patched_file in patch_set:
+        # Skip deleted files
+        if patched_file.is_removed_file:
+            continue
+            
+        file_path = patched_file.target_file
+        
+        # Check if file should be excluded
+        if any(glob.fnmatch.fnmatch(file_path, pattern) for pattern in self.exclude_patterns):
+            continue
+            
+        for hunk in patched_file:
+            chunk_content = str(hunk)
+            chunk_header = hunk.header
+            
+            changes = []
+            for line in hunk:
+                if line.is_added or line.is_context:
+                    line_num = line.target_line_no
+                    changes.append({
+                        'ln': line_num,
+                        'content': str(line)
+                    })
+            
+            parsed_files.append({
+                'to': file_path,
+                'chunk': {
+                    'content': chunk_header,
+                    'changes': changes
+                }
+            })
+            
+    return parsed_files
+        
 # JSON parser
 def parse_task_result_for_reviews(task_result):
     all_inline_comments = []
@@ -677,59 +680,107 @@ async def main() -> None:
         print("Exiting due to GitHub authentication/connection issues")
         return
 
-    # Fetch the PR content as a dictionary of files
+    # Fetch the PR content
     print(f"Fetching content for PR #{pr_number} in repository {repository}")
-    files_content = fetch_pr_content(repository, pr_number, github_token)
-    print(files_content)
+    pr_details = get_pr_details(repository, pr_number, github_token)
+    print(pr_details)
 
-    # Define a termination condition that stops the task if a special phrase is mentioned
-    text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
+    # Fetch the diff content
+    print("Fetching diff content...")
+    diff_content = get_diff(pr_details)
+    print(diff_content)
+    
+    # Parse the diff content
+    print("Parsing diff content...")
+    parsed_files = parse_diff(diff_content)
+    
+    if not parsed_files:
+        print("No valid files to review found in the PR")
+        return
+        
+    print(f"Found {len(parsed_files)} file chunks to review")
+    
+    # Process each file for review
+    for file_data in parsed_files:
+        file_path = file_data['to']
+        chunk = file_data['chunk']
+        
+        # Format changes for display
+        changes_text = ""
+        for change in chunk['changes']:
+            changes_text += f"{change['content']}\n"
+            
+        print(f"Reviewing file: {file_path}")
 
-    # Create a team with all the Greek gods and goddesses
-    greek_pantheon_team = RoundRobinGroupChat(
-        [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
-        termination_condition=text_termination
-    )
+        # Define a termination condition that stops the task if a special phrase is mentioned
+        text_termination = TextMentionTermination("DOCUMENTATION REVIEW COMPLETE")
 
-    # Create the task for each deity to perform
-    task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
-    - Respond in the following JSON format:
-    {{
-    "inlineReviews": [
+        # Create a team with all the Greek gods and goddesses
+        greek_pantheon_team = RoundRobinGroupChat(
+            [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+            termination_condition=text_termination
+        )
+
+        # Create the task for each deity to perform
+        task = f"""Your task is to review the following changes from pull requests according to your divine domain of expertise. Instructions:
+        - Respond in the following JSON format:
         {{
-        "filename": "<filename>",
-        "lineNumber": <line_number>,
-        "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
+        "inlineReviews": [
+            {{
+            "filename": "<filename>",
+            "lineNumber": <line_number>,
+            "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
+            }}
+        ],
+        "generalReviews": [
+            {{
+            "filename": "<filename>",
+            "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
+            }}
+        ]
         }}
-    ],
-    "generalReviews": [
-        {{
-        "filename": "<filename>",
-        "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
-        }}
-    ]
-    }}
-    - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
-    - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
-    - Do NOT wrap the output in triple backticks or any markdown.
-    - DO NOT include explanations or extra commentary.
-    - All comments should reflect your unique personality and domain.
-    - Do not give positive comments or compliments.
-    - Write the comment in GitHub Markdown format.
-    - IMPORTANT: NEVER suggest adding comments to the code.
+        - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
+        - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
+        - Do NOT wrap the output in triple backticks or any markdown.
+        - DO NOT include explanations or extra commentary.
+        - All comments should reflect your unique personality and domain.
+        - Do not give positive comments or compliments.
+        - Write the comment in GitHub Markdown format.
+        - IMPORTANT: NEVER suggest adding comments to the code.
 
-    Review the following code diff:
-    {files_content}
+        Review the following code diff in the file "{file_path}".
 
-    Your feedback should be specific, constructive, and actionable.
-    """
+        Pull request title: {pr_details['title']}
+        Pull request description:
 
-    # Run the review
-    print("Starting review process with divine pantheon...")
-    divine_responses = await greek_pantheon_team.run(task=task)
+        ---
+        {pr_details['description']}
+        ---
 
-    # Parse responses into inline + general comments
-    inline_reviews, general_reviews = parse_task_result_for_reviews(divine_responses)
+        Git diff to review:
+
+        ```diff
+        {chunk['content']}
+        {changes_text}
+        ```
+
+        Your feedback should be specific, constructive, and actionable.
+        """
+
+        # Run the review
+        print(f"Starting review process with divine pantheon for {file_path}...")
+        divine_responses = await greek_pantheon_team.run(task=task)
+
+        # Parse responses into inline + general comments
+        file_inline_reviews, file_general_reviews = parse_task_result_for_reviews(divine_responses)
+        
+        # Collect all reviews
+        if 'file_path' not in locals():
+            inline_reviews = file_inline_reviews
+            general_reviews = file_general_reviews
+        else:
+            inline_reviews.extend(file_inline_reviews)
+            general_reviews.extend(file_general_reviews)
 
     # Print the parsed results for debugging
     print("\n Inline Comments:")
