@@ -774,6 +774,10 @@ async def main() -> None:
         Your feedback should be specific, constructive, and actionable.
         """
 
+        # Initialize review collections
+        inline_reviews = []
+        general_reviews = []
+
         # Run the review
         print(f"Starting review process with divine pantheon for {file_path}...")
         divine_responses = await greek_pantheon_team.run(task=task)
