@@ -38,7 +38,7 @@ pr_number = int(os.environ["INPUT_PR_NUMBER"])
 # Create an Gemini model client
 model_client = OpenAIChatCompletionClient(
     model="gemini-1.5-flash-8b",
-    api_key="AIzaSyCCb-7jhHsTYWBVnhhLX5FVfHh6iMEtjJo",
+    api_key="GEMINIAPIKEY",
 )
 
 ######################################
