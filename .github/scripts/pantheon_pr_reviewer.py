@@ -453,7 +453,8 @@ def get_pr_details(repository: str, pr_number: int, github_token: str) -> Dict[s
         'title': pr.title,
         'description': pr.body or '',
         'repo_obj': repo_obj,
-        'pr_obj': pr
+        'pr_obj': pr,
+        'github_token': github_token
     }
 
 # PR diff grabber    
