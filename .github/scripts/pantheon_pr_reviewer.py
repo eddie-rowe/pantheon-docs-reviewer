@@ -530,28 +530,34 @@ def parse_task_result_for_reviews(task_result):
         if message.source == "user":
             continue  # skip the task prompt
 
-        try:
-            data = json.loads(message.content)
-            deity_name = message.source
+        deity_name = message.source
+        raw_content = message.content.strip()
 
-            for inline in data.get("inlineReviews", []):
-                all_inline_comments.append({
-                    "deity": deity_name,
-                    "filename": inline["filename"],
-                    "lineNumber": inline["lineNumber"],
-                    "body": inline["reviewComment"]
-                })
-
-            for general in data.get("generalReviews", []):
-                all_general_comments.append({
-                    "deity": deity_name,
-                    "filename": general["filename"],
-                    "body": general["reviewComment"]
-                })
-
-        except json.JSONDecodeError as e:
-            print(f"⚠️ Could not parse JSON from {message.source}: {e}")
+        if not raw_content:
+            print(f"⚠️ Empty response from {deity_name}")
             continue
+
+        try:
+            data = json.loads(raw_content)
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Could not parse JSON from {deity_name}: {e}")
+            print(f"⚠️ Raw content: {repr(raw_content)}")
+            continue
+
+        for inline in data.get("inlineReviews", []):
+            all_inline_comments.append({
+                "deity": deity_name,
+                "filename": inline.get("filename", "unknown"),
+                "lineNumber": inline.get("lineNumber", 1),
+                "body": inline.get("reviewComment", "").strip()
+            })
+
+        for general in data.get("generalReviews", []):
+            all_general_comments.append({
+                "deity": deity_name,
+                "filename": general.get("filename", "unknown"),
+                "body": general.get("reviewComment", "").strip()
+            })
 
     return all_inline_comments, all_general_comments
 
@@ -688,7 +694,6 @@ async def main() -> None:
     pr_details = get_pr_details(repository, pr_number, github_token)
     print(pr_details)
 
-
     # Fetch the diff content
     print("Fetching diff content...")
     diff_text = get_diff(pr_details)
@@ -697,11 +702,9 @@ async def main() -> None:
     # Parse the diff content
     print("Parsing diff content...")
     parsed_files = parse_diff(diff_text, exclude_patterns=["*.mdx", "*.lock"])
-    
     if not parsed_files:
         print("No valid files to review found in the PR")
         return
-        
     print(f"Found {len(parsed_files)} file chunks to review")
     
     # Process each file for review
