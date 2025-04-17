@@ -30,10 +30,10 @@ pr_number = int(os.environ["INPUT_PR_NUMBER"])
 ###################################
 
 # Create an OpenAI model client
-#model_client = OpenAIChatCompletionClient(
-#    model="gpt-4o-mini-2024-07-18",
-#    # api_key is taken from GitHub repository secret variable OPENAI_API_KEY
-#)
+model_client = OpenAIChatCompletionClient(
+    model="gpt-4o-mini-2024-07-18",
+    # api_key is taken from GitHub repository secret variable OPENAI_API_KEY
+)
 
 # Create an Gemini model client
 model_client = OpenAIChatCompletionClient(
@@ -701,7 +701,7 @@ async def main() -> None:
     
     # Parse the diff content
     print("Parsing diff content...")
-    parsed_files = parse_diff(diff_text, exclude_patterns=["*.mdx", "*.lock"])
+    parsed_files = parse_diff(diff_text, exclude_patterns=["*.mdx", "*.py", "*.lock"])
     if not parsed_files:
         print("No valid files to review found in the PR")
         return
