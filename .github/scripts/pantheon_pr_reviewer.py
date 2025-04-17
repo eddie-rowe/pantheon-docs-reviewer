@@ -47,7 +47,7 @@ model_client = OpenAIChatCompletionClient(
 
 # 1. Style Guide Adherence - Apollo (God of Light, Music, and Poetry)
 apollo = AssistantAgent(
-    "Apollo [Style Guide Adherence]",
+    "Apollo_StyleGuideAdherence",
     model_client=model_client,
     system_message="""You are Apollo, God of Light, Music, and Poetry, who serves as the Style Guide Adherence reviewer.
     
@@ -80,7 +80,7 @@ apollo = AssistantAgent(
 
 # 2. Readability Improvement - Hermes (God of Language, Communication, and Travel)
 hermes = AssistantAgent(
-    "Hermes [Readability Improvement]",
+    "Hermes_ReadabilityImprovement",
     model_client=model_client,
     system_message="""You are Hermes, God of Language, Communication, and Travel, who serves as the Readability Improvement reviewer.
 
@@ -110,7 +110,7 @@ hermes = AssistantAgent(
 
 # 3. Cognitive Load Reduction - Athena (Goddess of Wisdom and Strategic Warfare)
 athena = AssistantAgent(
-    "Athena [Cognitive Load Reduction]",
+    "Athena_CognitiveLoadReduction",
     model_client=model_client,
     system_message="""You are Athena, Goddess of Wisdom and Strategic Warfare, who serves as the Cognitive Load Reduction reviewer.
 
@@ -138,7 +138,7 @@ athena = AssistantAgent(
 
 # 4. Diátaxis Adherence - Hestia (Goddess of the Hearth, Home, and Architecture)
 hestia = AssistantAgent(
-    "Hestia [Diataxis Adherence]",
+    "Hestia_DiataxisAdherence",
     model_client=model_client,
     system_message="""You are Hestia, Goddess of the Hearth, Home, and Architecture, who serves as the Diátaxis Adherence reviewer.
 
@@ -166,7 +166,7 @@ hestia = AssistantAgent(
 
 # 5. Context Completeness - Mnemosyne (Titaness of Memory and Remembrance)
 mnemosyne = AssistantAgent(
-    "Mnemosyne [Context Completeness]",
+    "Mnemosyne_ContextCompleteness",
     model_client=model_client,
     system_message="""You are Mnemosyne, Titaness of Memory and Mother of the Muses, who serves as the Context Completeness reviewer.
 
@@ -198,7 +198,7 @@ mnemosyne = AssistantAgent(
 
 # 6. Code Accuracy - Hephaestus (God of Craftsmen, Artisans, and Blacksmiths)
 hephaestus = AssistantAgent(
-    "Hephaestus [Code Accuracy]",
+    "Hephaestus_CodeAccuracy",
     model_client=model_client,
     system_message="""You are Hephaestus, God of Craftsmen, Metallurgy, and Fire, who serves as the Code Accuracy reviewer.
 
@@ -226,7 +226,7 @@ hephaestus = AssistantAgent(
 
 # 7. Cross-Linking - Heracles (Hero and God known for his Twelve Labors connecting the Greek world)
 heracles = AssistantAgent(
-    "Heracles [Cross-Linking Opportunities]",
+    "Heracles_CrossLinkingOpportunities",
     model_client=model_client,
     system_message="""You are Heracles, Hero and God renowned for connecting the Greek world through your Twelve Labors, who serves as the Cross-Linking reviewer.
 
@@ -254,7 +254,7 @@ heracles = AssistantAgent(
 
 # 8. Terminology Consistency - Demeter (Goddess of Agriculture, Fertility, and Sacred Law)
 demeter = AssistantAgent(
-    "Demeter [Terminology Consistency]",
+    "Demeter_TerminologyConsistency",
     model_client=model_client,
     system_message="""You are Demeter, Goddess of Agriculture, Grain, and the Harvest, who serves as the Terminology Consistency reviewer.
 
@@ -286,7 +286,7 @@ demeter = AssistantAgent(
 
 # 9. Formatting - Aphrodite (Goddess of Beauty, Love, and Pleasure)
 aphrodite = AssistantAgent(
-    "Aphrodite [Formatting and Beauty]",
+    "Aphrodite_FormattingAndBeauty",
     model_client=model_client,
     system_message="""You are Aphrodite, Goddess of Beauty, Love, and Aesthetic Pleasure, who serves as the Formatting reviewer.
 
@@ -316,7 +316,7 @@ aphrodite = AssistantAgent(
 
 # 10. Accessibility - Iris (Goddess of the Rainbow and Divine Messenger)
 iris = AssistantAgent(
-    "Iris [Accessibility]",
+    "Iris_Accessibility",
     model_client=model_client,
     system_message="""You are Iris, Goddess of the Rainbow and Messenger between Realms, who serves as the Accessibility (A11y) reviewer.
 
@@ -344,7 +344,7 @@ iris = AssistantAgent(
 
 # 11. Visual Aid Suggestion - Dionysus (God of Wine, Festivities, and Theater)
 dionysus = AssistantAgent(
-    "Dionysus [Visual Aid Enhancement]",
+    "Dionysus_VisualAidEnhancement",
     model_client=model_client,
     system_message="""You are Dionysus, God of Wine, Ecstasy, and Theatre, who serves as the Visual Aid Suggestion reviewer.
 
@@ -376,7 +376,7 @@ dionysus = AssistantAgent(
 
 # 12. Knowledge Decay - Chronos (Personification of Time and Aging)
 chronos = AssistantAgent(
-    "Chronos [Knowledge Decay Identifier]",
+    "Chronos_KnowledgeDecayIdentifier",
     model_client=model_client,
     system_message="""You are Chronos, Personification of Time and Inevitability, who serves as the Knowledge Decay reviewer.
 
@@ -408,7 +408,7 @@ chronos = AssistantAgent(
 
 # 13. Summarization - Harmonia (Goddess of Harmony, Balance, and Concord)
 harmonia = AssistantAgent(
-    "Harmonia [Summarization]",
+    "Harmonia_Summarization",
     model_client=model_client,
     system_message="""You are Harmonia, Goddess of Harmony and Concord, who serves as the Summary Report Generator.
     
