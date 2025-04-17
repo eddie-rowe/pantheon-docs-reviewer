@@ -748,10 +748,10 @@ async def main() -> None:
         }}
         - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
         - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
-        - Do NOT wrap the output in triple backticks or any markdown.
-        - DO NOT include explanations or extra commentary.
+        - Do NOT wrap the output in triple backticks. DO NOT use markdown formatting like ```json.
+        - Do NOT include explanations or extra commentary.
         - All comments should reflect your unique personality and domain.
-        - Do not give positive comments or compliments.
+        - Do NOT give positive comments or compliments.
         - Write the comment in GitHub Markdown format.
         - IMPORTANT: NEVER suggest adding comments to the code.
 
