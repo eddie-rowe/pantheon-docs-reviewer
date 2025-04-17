@@ -772,7 +772,7 @@ async def main() -> None:
             {{
             "filename": "{file_path}",
             "position": <position>,  // This is the line number in the unified diff view (starts at 1)
-            "reviewComment": "Poignant and actionable line-specific feedback. Brief reasoning."
+            "reviewComment": "[ReviewType] Poignant and actionable line-specific feedback. Brief reasoning."
             }}
         ],
         "generalReviews": [
