@@ -442,7 +442,6 @@ harmonia = AssistantAgent(
 def get_pr_details(repository: str, pr_number: int, github_token: str) -> Dict[str, Any]:
     """Extract PR details from the GitHub repository."""
     # Initialize GitHub client
-    from github import Github
     github_client = Github(github_token)
     
     # Get repository and PR objects
@@ -521,6 +520,35 @@ def parse_diff(diff_content: str, exclude_patterns: List[str] = None) -> List[Di
             
     return parsed_files
 
+# PR diff position getter
+def get_diff_position(patch: str, target_line: int) -> Optional[int]:
+    """
+    Given a patch string and a target line number in the new file,
+    return the position (index of the line in the diff) suitable for GitHub API.
+    """
+    if not patch:
+        return None
+
+    diff_lines = patch.split('\n')
+    position = 0
+    new_line_number = 0
+
+    for line in diff_lines:
+        if line.startswith('@@'):
+            m = re.match(r'^@@ \-(\d+),?\d* \+(\d+),?\d* @@', line)
+            if not m:
+                continue
+            new_line_number = int(m.group(2)) - 1  # GitHub line numbers are 1-based
+        elif not line.startswith('-'):
+            new_line_number += 1
+
+        position += 1
+
+        if new_line_number == target_line:
+            return position
+
+    return None
+
 # JSON parser
 def parse_task_result_for_reviews(task_result):
     all_inline_comments = []
@@ -562,11 +590,11 @@ def parse_task_result_for_reviews(task_result):
     return all_inline_comments, all_general_comments
 
 # Github PR comment poster
-def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str, 
+def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
                          inline_comments: List[Dict], general_comments: List[Dict]) -> None:
     """
     Posts comments to the GitHub PR.
-    
+
     Args:
         repo_name: The name of the repository in the format 'owner/repo'
         pr_number: The PR number to post comments to
@@ -577,62 +605,65 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
     try:
         # Initialize GitHub client
         g = Github(github_token)
-        
+
         # Get the repository
         repo = g.get_repo(repo_name)
-        
+
         # Get the pull request
         pull_request = repo.get_pull(pr_number)
-        
+
         # Post general comments as PR comments
         for comment in general_comments:
             deity_name = comment["deity"]
             filename = comment["filename"]
             body = comment["body"]
-            
+
             full_comment = f"## {deity_name}'s Review of {filename}\n\n{body}"
             pull_request.create_issue_comment(full_comment)
             print(f"Posted general comment from {deity_name} for {filename}")
-        
-        # Post inline comments
-        # We need to get the latest commit to post review comments
+
+        # Get latest commit for review
         latest_commit = list(pull_request.get_commits())[-1]
-        
-        # Group comments by filename to batch them
+
+        # Group inline comments by filename
         comments_by_file = {}
         for comment in inline_comments:
             filename = comment["filename"]
             if filename not in comments_by_file:
                 comments_by_file[filename] = []
             comments_by_file[filename].append(comment)
-        
-        # Create a review with all comments
+
+        # Fetch diffs from changed files in the PR
+        files_changed = {f.filename: f for f in pull_request.get_files()}
+
         review_comments = []
+
         for filename, comments in comments_by_file.items():
+            if filename not in files_changed:
+                print(f"File {filename} not found in pull request diff.")
+                continue
+
+            patch = files_changed[filename].patch
+
             for comment in comments:
                 deity_name = comment["deity"]
                 line_number = comment["lineNumber"]
                 body = comment["body"]
-                
-                # Try to get the file content to find the right position
-                try:
-                    file_content = repo.get_contents(filename, ref=pull_request.head.ref).decoded_content.decode('utf-8')
-                    lines = file_content.split('\n')
-                    
-                    # Ensure line_number is within bounds
-                    if line_number > 0 and line_number <= len(lines):
-                        review_comments.append({
-                            "path": filename,
-                            "position": line_number,  # This is simplified - GitHub API requires diff position
-                            "body": f"**{deity_name}**: {body}"
-                        })
-                except Exception as e:
-                    print(f"Error preparing comment for {filename}:{line_number}: {str(e)}")
-                    # Fall back to PR comment if we can't post an inline comment
+
+                position = get_diff_position(patch, line_number)
+
+                if position is not None:
+                    review_comments.append({
+                        "path": filename,
+                        "position": position,
+                        "body": f"**{deity_name}**: {body}"
+                    })
+                else:
+                    print(f"Could not determine diff position for {filename}:{line_number}")
                     fallback_comment = f"**{deity_name}** comment for {filename} line {line_number}:\n\n{body}"
                     pull_request.create_issue_comment(fallback_comment)
-        
-        # Create the review if we have comments
+
+        # Post inline comments as a single review
         if review_comments:
             try:
                 pull_request.create_review(
@@ -643,11 +674,11 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
                 print(f"Posted {len(review_comments)} inline comments to PR")
             except Exception as e:
                 print(f"Error posting review comments: {str(e)}")
-                # Fall back to issue comments
+                # Fallback to issue comments
                 for comment in review_comments:
                     fallback = f"**Inline Comment for {comment['path']}:{comment['position']}**\n\n{comment['body']}"
                     pull_request.create_issue_comment(fallback)
-        
+
     except Exception as e:
         print(f"Error posting comments to PR: {str(e)}")
  
