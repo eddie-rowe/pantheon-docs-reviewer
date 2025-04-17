@@ -30,9 +30,15 @@ pr_number = int(os.environ["INPUT_PR_NUMBER"])
 ###################################
 
 # Create an OpenAI model client
+#model_client = OpenAIChatCompletionClient(
+#    model="gpt-4o-mini-2024-07-18",
+#    # api_key is taken from GitHub repository secret variable OPENAI_API_KEY
+#)
+
+# Create an Gemini model client
 model_client = OpenAIChatCompletionClient(
-    model="gpt-4o-mini-2024-07-18",
-    # api_key is taken from GitHub repository secret variable OPENAI_API_KEY
+    model="gemini-1.5-flash-8b",
+    api_key="AIzaSyCCb-7jhHsTYWBVnhhLX5FVfHh6iMEtjJo",
 )
 
 ######################################
