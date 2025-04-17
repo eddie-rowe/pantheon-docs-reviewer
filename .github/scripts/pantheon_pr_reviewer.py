@@ -590,11 +590,11 @@ def parse_task_result_for_reviews(task_result):
     return all_inline_comments, all_general_comments
 
 # Github PR comment poster
-def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
+def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str, 
                          inline_comments: List[Dict], general_comments: List[Dict]) -> None:
     """
     Posts comments to the GitHub PR.
-
+    
     Args:
         repo_name: The name of the repository in the format 'owner/repo'
         pr_number: The PR number to post comments to
@@ -605,65 +605,74 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
     try:
         # Initialize GitHub client
         g = Github(github_token)
-
-        # Get the repository
+        
+        # Get the repository and pull request
         repo = g.get_repo(repo_name)
-
-        # Get the pull request
         pull_request = repo.get_pull(pr_number)
 
-        # Post general comments as PR comments
+        # --- Post General Comments ---
         for comment in general_comments:
             deity_name = comment["deity"]
             filename = comment["filename"]
+            if filename.startswith("b/"):  # Normalize 'b/' prefix
+                filename = filename[2:]
             body = comment["body"]
-
             full_comment = f"## {deity_name}'s Review of {filename}\n\n{body}"
             pull_request.create_issue_comment(full_comment)
             print(f"Posted general comment from {deity_name} for {filename}")
-
-        # Get latest commit for review
+        
+        # --- Prepare Inline Comments ---
         latest_commit = list(pull_request.get_commits())[-1]
+
+        # Normalize file names from the PR diff
+        files_changed = {}
+        for f in pull_request.get_files():
+            clean_name = f.filename
+            if clean_name.startswith("b/"):
+                clean_name = clean_name[2:]
+            files_changed[clean_name] = f
 
         # Group inline comments by filename
         comments_by_file = {}
         for comment in inline_comments:
             filename = comment["filename"]
+            if filename.startswith("b/"):
+                filename = filename[2:]
+
             if filename not in comments_by_file:
                 comments_by_file[filename] = []
             comments_by_file[filename].append(comment)
 
-        # Fetch diffs from changed files in the PR
-        files_changed = {f.filename: f for f in pull_request.get_files()}
-
         review_comments = []
-
         for filename, comments in comments_by_file.items():
             if filename not in files_changed:
                 print(f"File {filename} not found in pull request diff.")
                 continue
 
-            patch = files_changed[filename].patch
+            try:
+                file_content = repo.get_contents(filename, ref=pull_request.head.ref).decoded_content.decode('utf-8')
+                lines = file_content.split('\n')
+            except Exception as e:
+                print(f"Could not fetch file content for {filename}: {e}")
+                continue
 
             for comment in comments:
                 deity_name = comment["deity"]
                 line_number = comment["lineNumber"]
                 body = comment["body"]
 
-                position = get_diff_position(patch, line_number)
-
-                if position is not None:
+                if 0 < line_number <= len(lines):
+                    # GitHub API needs "position" in the diff, not line number
+                    # For simplicity, use line number directly if it works in your setup
                     review_comments.append({
                         "path": filename,
-                        "position": position,
+                        "position": line_number,
                         "body": f"**{deity_name}**: {body}"
                     })
                 else:
-                    print(f"Could not determine diff position for {filename}:{line_number}")
-                    fallback_comment = f"**{deity_name}** comment for {filename} line {line_number}:\n\n{body}"
-                    pull_request.create_issue_comment(fallback_comment)
+                    print(f"Line number {line_number} out of bounds for {filename}")
 
-        # Post inline comments as a single review
+        # --- Post Inline Comments as Review ---
         if review_comments:
             try:
                 pull_request.create_review(
@@ -673,14 +682,14 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
                 )
                 print(f"Posted {len(review_comments)} inline comments to PR")
             except Exception as e:
-                print(f"Error posting review comments: {str(e)}")
+                print(f"Error posting review comments: {e}")
                 # Fallback to issue comments
                 for comment in review_comments:
                     fallback = f"**Inline Comment for {comment['path']}:{comment['position']}**\n\n{comment['body']}"
                     pull_request.create_issue_comment(fallback)
 
     except Exception as e:
-        print(f"Error posting comments to PR: {str(e)}")
+        print(f"Error posting comments to PR: {e}")
  
 # Github connection tester
 def test_github_connection():
