@@ -24,6 +24,8 @@ from typing import Dict, List, Any, Tuple, Optional
 github_token = os.environ["INPUT_GITHUB_TOKEN"]
 repository = os.environ["GITHUB_REPOSITORY"]
 pr_number = int(os.environ["INPUT_PR_NUMBER"])
+openai_model = os.environ["OPENAI_MODEL"]
+repository = os.environ["GITHUB_REPOSITORY"]
 
 ###################################
 # AutoGen model client definitions
@@ -31,7 +33,7 @@ pr_number = int(os.environ["INPUT_PR_NUMBER"])
 
 # Create an OpenAI model client
 model_client = OpenAIChatCompletionClient(
-    model="gpt-4o-mini-2024-07-18",
+    model=openai_model,
     # api_key is taken from GitHub repository secret variable OPENAI_API_KEY
 )
 
@@ -401,31 +403,31 @@ chronos = AssistantAgent(
     )
 
 ######################################
-# Summarization & Organization Goddess
+# Summarization & Concluding Goddess
 ######################################
 
-# 13. Summarization - Harmonia (Goddess of Harmony, Balance, and Concord)
-harmonia = AssistantAgent(
-    "Harmonia",
+# 13. Summarization - Atropos (Goddess of Final Judgment and Inevitable Conclusions)
+atropos = AssistantAgent(
+    "Atropos",
     model_client=model_client,
-    system_message="""You are Harmonia, Goddess of Harmony and Concord, who serves as the Summary Report Generator.
-    
+    system_message="""You are Atropos, the Goddess of Final Judgment and Inevitable Conclusions, who serves as the Summary Report Generator.
+
     Your divine attributes:
-    - Bringer of unity from diversity
-    - Weaver of disparate threads into a cohesive tapestry
-    - Mediator who finds balance among competing perspectives
+    - Cutter of the thread that binds decisions
+    - Arbiter of closure and resolution
+    - Bringer of clarity to the Pantheon’s collective insight
 
-    Your sacred duty is to create comprehensive summary reports of the Pantheon's feedback by:
-    - Identifying areas of consensus and divergence among the reviewers
-    - Summarizing the perspective of all 12 divine reviewers
+    Your sacred duty is to create final summary reports of the Pantheon’s feedback by:
+    - Distilling the essential outcomes of the review process
+    - Highlighting patterns, consensus, and points of divergence
+    - Rendering a decisive perspective that concludes the divine deliberation
 
-    End your summary with a statement about the harmony (or lack thereof) among the divine perspectives, 
-    such as "The divine chorus offers a balanced harmony of perspectives, though several competing melodies 
-    require resolution before perfection can be achieved."
+    End your summary with a statement that reflects the finality or tension of the divine discourse, 
+    such as "The threads of fate converge toward consensus, though frayed ends remain unresolved."
 
-    Finally, at the bottom of your review, provide an average the scores provided by all divine reviewers. Output the score in the following format: "AVERAGE SCORE: [0-100]".
+    Finally, at the bottom of your review, provide an average of the scores provided by all divine reviewers. Output the score in the following format: "AVERAGE SCORE: [0-100]".
 
-    Once all 12 divine reviewers have performed their reviews and you have provided your summary, please conclude with 'DOCUMENTATION REVIEW COMPLETE'.
+    Once all 12 divine reviewers have performed their reviews and you have rendered your summary, please conclude with 'DOCUMENTATION REVIEW COMPLETE'.
     """
 )
 
@@ -760,7 +762,7 @@ async def main() -> None:
 
         # Create a team with all the Greek gods and goddesses
         greek_pantheon_team = RoundRobinGroupChat(
-            [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, harmonia], 
+            [apollo, hermes, athena, hestia, mnemosyne, hephaestus, heracles, demeter, aphrodite, iris, dionysus, chronos, atropos], 
             termination_condition=text_termination
         )
 

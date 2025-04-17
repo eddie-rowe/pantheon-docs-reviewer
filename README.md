@@ -1,45 +1,54 @@
-# Divine Pantheon GitHub PR Reviewer
+# AI Divine Pantheon PR Reviewer
 
-This GitHub Action combines the power of an autogen "pantheon" of specialized AI reviewers with GitHub's PR review capabilities. Each "deity" reviewer specializes in a different aspect of code quality and provides tailored feedback directly on your pull requests.
+This GitHub Action combines the power of specialized AI reviewers with GitHub's PR review capabilities.
+
+Each "deity" reviewer specializes in a different aspect of technical writing quality and provides tailored feedback directly on your pull requests.
+
+The intended audience for this particular pantheon is those focused on improving documentation quality: technical writers, developer advocates, and information architects.
+
+![pantheon deities](/image/pantheon_deities.png)
 
 ## Features
 
 - **Specialized Review Domains**: Each AI reviewer (deity) focuses on a specific aspect of code quality:
-  - **Apollo**: Style guide adherence and code aesthetics
+  - **Apollo**: Style guide adherence
   - **Hermes**: Readability and communication clarity
-  - **Athena**: Cognitive load reduction and code complexity
+  - **Athena**: Cognitive load reduction
   - **Hestia**: Documentation structure and organization
   - **Mnemosyne**: Context completeness
   - **Hephaestus**: Code accuracy and functionality
-  - **Heracles**: Cross-linking and code relationships
+  - **Heracles**: Cross-linking opportunities
   - **Demeter**: Terminology consistency
-  - **Aphrodite**: Code formatting and visual presentation
+  - **Aphrodite**: Formatting and beauty
   - **Iris**: Accessibility
-  - **Dionysus**: Visual aid suggestions
+  - **Dionysus**: Visual aid enhancements
   - **Chronos**: Knowledge decay and outdated patterns
 
-- **Harmonious Summary**: Harmonia provides an integrated review summary combining all feedback
+- **Atropos**: Atropos ensures all deities have responded and ends the review.
 
 - **In-line PR Comments**: Each reviewer's feedback is added as in-line comments at the relevant locations in your code
 
+- **General PR Comments**: Each reviewer's feedback is added as in-line comments at the relevant locations in your code
+
 ## Setup Instructions
 
-### 1. Add the workflow file
+1. Add the workflow file
 
 Create a file `.github/workflows/pantheon-review.yml` in your repository with the content from the provided workflow YAML.
 
-### 2. Add the pantheon reviewer script
+1. Add the pantheon reviewer script
 
 Save the provided Python script as `pantheon_pr_reviewer.py` in your repository.
 
-### 3. Set up secrets
+1. Set up secrets
 
 Add the following secrets to your GitHub repository:
 - `OPENAI_API_KEY`: Your OpenAI API key
 
-### 4. Configure (optional)
+1. Configure (optional)
 
 You can customize the pantheon reviewers by modifying the Python script:
+
 - Adjust each deity's system message to focus on aspects relevant to your codebase
 - Add or remove deity reviewers based on your needs
 - Modify comment formatting or content focus
@@ -49,28 +58,41 @@ You can customize the pantheon reviewers by modifying the Python script:
 The action will automatically run on new pull requests and when pull requests are updated.
 
 You can also manually trigger a review on any PR by:
+
 1. Going to the "Actions" tab in your repository
-2. Selecting the "Divine Pantheon Code Review" workflow
-3. Clicking "Run workflow"
-4. Entering the PR number you want to review
+1. Selecting the "Divine Pantheon Code Review" workflow
+1. Clicking "Run workflow"
+1. Entering the PR number you want to review
 
 ## Example Output
 
-Each review comment will be tagged with the deity name and domain:
+### In-line review
 
+Each deity will leave a reasonable number of in-line reviews.
+
+```txt
+Apollo: [Structure] The new section '## Extending' is introduced without proper context. 
+Consider adding a sentence that links this section to the previous content, thereby emphasizing its relevance.
 ```
-### [Apollo - Style Guide Adherence]
 
-Line 42 violates the project's naming convention. 
-The variable `tmp_var` should follow camelCase: `tmpVar`
+### General review
+
+Each deity will leave a single general review.
+
+```txt
+Hestia's Review of README.md
+The foundation of this document is built with intention, yet it requires further reinforcement. 
+Enhancing the clarity and specificity of your instructions will ensure a solid structure for all who seek guidance. 
+SCORE: 65
 ```
 
 ## Extending
 
 To add new deity reviewers or modify existing ones:
+
 1. Define a new AssistantAgent with appropriate system message
-2. Add the agent to the reviewer_agents list
-3. Deploy the updated workflow
+1. Add the agent to the reviewer_agents list
+1. Deploy the updated workflow
 
 This project could be modified to be a team of anything set on doing anything.
 

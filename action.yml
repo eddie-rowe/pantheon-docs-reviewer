@@ -1,0 +1,37 @@
+name: "AI Divine Pantheon PR Reviewer"
+description: "Perform technical writing focused reviews and comment on diffs using OpenAI API."
+inputs:
+  GITHUB_TOKEN:
+    description: "GitHub token to interact with the repository."
+    required: true
+  OPENAI_API_KEY:
+    description: "OpenAI API key for GPT."
+    required: true
+  OPENAI_API_MODEL:
+    description: "OpenAI API model."
+    required: false
+    default: "gpt-4o-mini-2024-07-18"
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install openai tiktoken PyGithub autogen-agentchat autogen-core autogen-ext[openai,azure] unidiff
+    
+    - name: Run Pantheon Review
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+        OPENAI_API_KEY: ${{ inputs.OPENAI_API_KEY }}
+        OPENAI_MODEL: ${{ inputs.OPENAI_API_MODEL }}
+      run: python ${{ github.action_path }}/src/pantheon_pr_reviewer.py
+branding:
+  icon: "shield"
+  color: "purple"
