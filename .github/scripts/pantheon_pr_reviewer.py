@@ -494,9 +494,8 @@ def parse_diff(diff_content: str, exclude_patterns: List[str] = None) -> List[Di
             continue
             
         for hunk in patched_file:
-            chunk_content = str(hunk)
-            chunk_header = hunk.header
-            
+            chunk_header = f"@@ -{hunk.source_start},{hunk.source_length} +{hunk.target_start},{hunk.target_length} @@"
+
             changes = []
             for line in hunk:
                 if line.is_added or line.is_context:
@@ -515,7 +514,7 @@ def parse_diff(diff_content: str, exclude_patterns: List[str] = None) -> List[Di
             })
             
     return parsed_files
-        
+
 # JSON parser
 def parse_task_result_for_reviews(task_result):
     all_inline_comments = []
