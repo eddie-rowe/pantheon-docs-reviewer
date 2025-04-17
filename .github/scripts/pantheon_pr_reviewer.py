@@ -47,7 +47,7 @@ model_client = OpenAIChatCompletionClient(
 
 # 1. Style Guide Adherence - Apollo (God of Light, Music, and Poetry)
 apollo = AssistantAgent(
-    "Apollo[Style Guide Adherence]",
+    "Apollo",
     model_client=model_client,
     system_message="""You are Apollo, God of Light, Music, and Poetry, who serves as the Style Guide Adherence reviewer.
     
@@ -80,7 +80,7 @@ apollo = AssistantAgent(
 
 # 2. Readability Improvement - Hermes (God of Language, Communication, and Travel)
 hermes = AssistantAgent(
-    "Hermes[Readability Improvement]",
+    "Hermes",
     model_client=model_client,
     system_message="""You are Hermes, God of Language, Communication, and Travel, who serves as the Readability Improvement reviewer.
 
@@ -138,7 +138,7 @@ athena = AssistantAgent(
 
 # 4. Diátaxis Adherence - Hestia (Goddess of the Hearth, Home, and Architecture)
 hestia = AssistantAgent(
-    "Hestia [Diataxis Adherence]",
+    "Hestia",
     model_client=model_client,
     system_message="""You are Hestia, Goddess of the Hearth, Home, and Architecture, who serves as the Diátaxis Adherence reviewer.
 
