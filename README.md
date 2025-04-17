@@ -6,7 +6,7 @@ Each "deity" reviewer specializes in a different aspect of technical writing qua
 
 The intended audience for this particular pantheon is those focused on improving documentation quality: technical writers, developer advocates, and information architects.
 
-![pantheon deities](/image/pantheon_deities.png)
+![pantheon deities](/img/pantheon_deities.png)
 
 ## Features
 
