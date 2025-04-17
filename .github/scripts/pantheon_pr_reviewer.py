@@ -36,10 +36,10 @@ model_client = OpenAIChatCompletionClient(
 )
 
 # Create an Gemini model client
-model_client = OpenAIChatCompletionClient(
-    model="gemini-1.5-flash-8b",
-    api_key="GEMINIAPIKEY",
-)
+#model_client = OpenAIChatCompletionClient(
+#    model="gemini-1.5-flash-8b",
+#    api_key="GEMINIAPIKEY",
+#)
 
 ######################################
 # Content & Clarity Gods and Goddesses
@@ -697,7 +697,7 @@ async def main() -> None:
     # Fetch the diff content
     print("Fetching diff content...")
     diff_text = get_diff(pr_details)
-    print(diff_text)
+    #print(diff_text)
     
     # Parse the diff content
     print("Parsing diff content...")
