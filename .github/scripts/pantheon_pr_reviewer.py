@@ -31,7 +31,7 @@ pr_number = int(os.environ["INPUT_PR_NUMBER"])
 
 # Create an OpenAI model client
 model_client = OpenAIChatCompletionClient(
-    model="gpt-4.1-nano-2025-04-14",
+    model="gpt-4o-mini-2024-07-18",
     # api_key is taken from GitHub repository secret variable OPENAI_API_KEY
 )
 
