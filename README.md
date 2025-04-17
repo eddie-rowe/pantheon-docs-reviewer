@@ -65,7 +65,7 @@ Line 42 violates the project's naming convention.
 The variable `tmp_var` should follow camelCase: `tmpVar`
 ```
 
-## Extending & Extrapolating
+## Extending
 
 To add new deity reviewers or modify existing ones:
 1. Define a new AssistantAgent with appropriate system message

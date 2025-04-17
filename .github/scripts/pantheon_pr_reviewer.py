@@ -30,16 +30,16 @@ pr_number = int(os.environ["INPUT_PR_NUMBER"])
 ###################################
 
 # Create an OpenAI model client
-#model_client = OpenAIChatCompletionClient(
-#    model="gpt-4o-mini-2024-07-18",
-#    # api_key is taken from GitHub repository secret variable OPENAI_API_KEY
-#)
+model_client = OpenAIChatCompletionClient(
+    model="gpt-4o-mini-2024-07-18",
+    # api_key is taken from GitHub repository secret variable OPENAI_API_KEY
+)
 
 # Create an Gemini model client
-model_client = OpenAIChatCompletionClient(
-    model="gemini-1.5-flash-8b",
-    api_key="GEMINIAPIKEY",
-)
+#model_client = OpenAIChatCompletionClient(
+#    model="gemini-1.5-flash-8b",
+#    api_key="GEMINIAPIKEY",
+#)
 
 ######################################
 # Content & Clarity Gods and Goddesses
@@ -416,20 +416,16 @@ harmonia = AssistantAgent(
     - Mediator who finds balance among competing perspectives
 
     Your sacred duty is to create comprehensive summary reports of the Pantheon's feedback by:
-    - Collecting and organizing all feedback from the divine reviewers to update the GitHub Actions step summary (GITHUB_STEP_SUMMARY)
     - Identifying areas of consensus and divergence among the reviewers
-    - Distilling feedback into clear, actionable comments for GitHub PR review
-    - Ensuring all feedback is properly attributed to the deity who provided it
-    - Ensure the summary report contains the respective information from all 12 divine reviewers
+    - Summarizing the perspective of all 12 divine reviewers
 
     End your summary with a statement about the harmony (or lack thereof) among the divine perspectives, 
     such as "The divine chorus offers a balanced harmony of perspectives, though several competing melodies 
     require resolution before perfection can be achieved."
 
-    Finally, at the bottom of your review, score the overall code quality on a scale of 0-100, where 100 is perfect harmony between reviewers.
-    Assume high standards for production code. Output the score in the following format: "SCORE: [0-100]".
+    Finally, at the bottom of your review, provide an average the scores provided by all divine reviewers. Output the score in the following format: "AVERAGE SCORE: [0-100]".
 
-    Once the summary is complete, please conclude with 'DOCUMENTATION REVIEW COMPLETE'.
+    Once all 12 divine reviewers have performed their reviews and you have provided your summary, please conclude with 'DOCUMENTATION REVIEW COMPLETE'.
     """
 )
 
@@ -442,7 +438,6 @@ harmonia = AssistantAgent(
 def get_pr_details(repository: str, pr_number: int, github_token: str) -> Dict[str, Any]:
     """Extract PR details from the GitHub repository."""
     # Initialize GitHub client
-    from github import Github
     github_client = Github(github_token)
     
     # Get repository and PR objects
@@ -521,6 +516,35 @@ def parse_diff(diff_content: str, exclude_patterns: List[str] = None) -> List[Di
             
     return parsed_files
 
+# PR diff position getter
+def get_diff_position(patch: str, target_line: int) -> Optional[int]:
+    """
+    Given a patch string and a target line number in the new file,
+    return the position (index of the line in the diff) suitable for GitHub API.
+    """
+    if not patch:
+        return None
+
+    diff_lines = patch.split('\n')
+    position = 0
+    new_line_number = 0
+
+    for line in diff_lines:
+        if line.startswith('@@'):
+            m = re.match(r'^@@ \-(\d+),?\d* \+(\d+),?\d* @@', line)
+            if not m:
+                continue
+            new_line_number = int(m.group(2)) - 1  # GitHub line numbers are 1-based
+        elif not line.startswith('-'):
+            new_line_number += 1
+
+        position += 1
+
+        if new_line_number == target_line:
+            return position
+
+    return None
+
 # JSON parser
 def parse_task_result_for_reviews(task_result):
     all_inline_comments = []
@@ -578,61 +602,73 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
         # Initialize GitHub client
         g = Github(github_token)
         
-        # Get the repository
+        # Get the repository and pull request
         repo = g.get_repo(repo_name)
-        
-        # Get the pull request
         pull_request = repo.get_pull(pr_number)
-        
-        # Post general comments as PR comments
+
+        # --- Post General Comments ---
         for comment in general_comments:
             deity_name = comment["deity"]
             filename = comment["filename"]
+            if filename.startswith("b/"):  # Normalize 'b/' prefix
+                filename = filename[2:]
             body = comment["body"]
-            
             full_comment = f"## {deity_name}'s Review of {filename}\n\n{body}"
             pull_request.create_issue_comment(full_comment)
             print(f"Posted general comment from {deity_name} for {filename}")
         
-        # Post inline comments
-        # We need to get the latest commit to post review comments
+        # --- Prepare Inline Comments ---
         latest_commit = list(pull_request.get_commits())[-1]
-        
-        # Group comments by filename to batch them
+
+        # Normalize file names from the PR diff
+        files_changed = {}
+        for f in pull_request.get_files():
+            clean_name = f.filename
+            if clean_name.startswith("b/"):
+                clean_name = clean_name[2:]
+            files_changed[clean_name] = f
+
+        # Group inline comments by filename
         comments_by_file = {}
         for comment in inline_comments:
             filename = comment["filename"]
+            if filename.startswith("b/"):
+                filename = filename[2:]
+
             if filename not in comments_by_file:
                 comments_by_file[filename] = []
             comments_by_file[filename].append(comment)
-        
-        # Create a review with all comments
+
         review_comments = []
         for filename, comments in comments_by_file.items():
+            if filename not in files_changed:
+                print(f"File {filename} not found in pull request diff.")
+                continue
+
+            try:
+                file_content = repo.get_contents(filename, ref=pull_request.head.ref).decoded_content.decode('utf-8')
+                lines = file_content.split('\n')
+            except Exception as e:
+                print(f"Could not fetch file content for {filename}: {e}")
+                continue
+
             for comment in comments:
                 deity_name = comment["deity"]
                 line_number = comment["lineNumber"]
                 body = comment["body"]
-                
-                # Try to get the file content to find the right position
-                try:
-                    file_content = repo.get_contents(filename, ref=pull_request.head.ref).decoded_content.decode('utf-8')
-                    lines = file_content.split('\n')
-                    
-                    # Ensure line_number is within bounds
-                    if line_number > 0 and line_number <= len(lines):
-                        review_comments.append({
-                            "path": filename,
-                            "position": line_number,  # This is simplified - GitHub API requires diff position
-                            "body": f"**{deity_name}**: {body}"
-                        })
-                except Exception as e:
-                    print(f"Error preparing comment for {filename}:{line_number}: {str(e)}")
-                    # Fall back to PR comment if we can't post an inline comment
-                    fallback_comment = f"**{deity_name}** comment for {filename} line {line_number}:\n\n{body}"
-                    pull_request.create_issue_comment(fallback_comment)
-        
-        # Create the review if we have comments
+
+                if 0 < line_number <= len(lines):
+                    # GitHub API needs "position" in the diff, not line number
+                    # For simplicity, use line number directly if it works in your setup
+                    review_comments.append({
+                        "path": filename,
+                        "position": line_number,
+                        "body": f"**{deity_name}**: {body}"
+                    })
+                else:
+                    print(f"Line number {line_number} out of bounds for {filename}")
+
+        # --- Post Inline Comments as Review ---
         if review_comments:
             try:
                 pull_request.create_review(
@@ -642,14 +678,14 @@ def post_comments_to_pr(repo_name: str, pr_number: int, github_token: str,
                 )
                 print(f"Posted {len(review_comments)} inline comments to PR")
             except Exception as e:
-                print(f"Error posting review comments: {str(e)}")
-                # Fall back to issue comments
+                print(f"Error posting review comments: {e}")
+                # Fallback to issue comments
                 for comment in review_comments:
                     fallback = f"**Inline Comment for {comment['path']}:{comment['position']}**\n\n{comment['body']}"
                     pull_request.create_issue_comment(fallback)
-        
+
     except Exception as e:
-        print(f"Error posting comments to PR: {str(e)}")
+        print(f"Error posting comments to PR: {e}")
  
 # Github connection tester
 def test_github_connection():
@@ -697,11 +733,11 @@ async def main() -> None:
     # Fetch the diff content
     print("Fetching diff content...")
     diff_text = get_diff(pr_details)
-    print(diff_text)
+    #print(diff_text)
     
     # Parse the diff content
     print("Parsing diff content...")
-    parsed_files = parse_diff(diff_text, exclude_patterns=["*.mdx", "*.lock"])
+    parsed_files = parse_diff(diff_text, exclude_patterns=["*.mdx", "*.py", "*.lock"])
     if not parsed_files:
         print("No valid files to review found in the PR")
         return
@@ -734,18 +770,20 @@ async def main() -> None:
         {{
         "inlineReviews": [
             {{
-            "filename": "<filename>",
-            "lineNumber": <line_number>,
-            "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
+            "filename": "{file_path}",
+            "position": <position>,  // This is the line number in the unified diff view (starts at 1)
+            "reviewComment": "[ReviewType] Poignant and actionable line-specific feedback. Brief reasoning."
             }}
         ],
         "generalReviews": [
             {{
-            "filename": "<filename>",
-            "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
+            "filename": "{file_path}",
+            "reviewComment": "Respective personality-based summary of content review. SCORE: [0-100] "
             }}
         ]
         }}
+        - The `position` is NOT the original file line number.
+        - The `position` is the line index (1-based) within the diff block itself.
         - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
         - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
         - Do NOT wrap the output in triple backticks. DO NOT use markdown formatting like ```json.
