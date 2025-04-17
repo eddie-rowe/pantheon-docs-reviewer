@@ -13,6 +13,7 @@ import os
 import re
 import json
 from github import Github
+import requests
 from typing import Dict, List, Any, Tuple, Optional
 
 ####################
@@ -455,43 +456,27 @@ def get_pr_details(repository: str, pr_number: int, github_token: str) -> Dict[s
         'pr_obj': pr
     }
 
+# PR diff grabber    
 def get_diff(pr_details: Dict[str, Any], event_data: Dict[str, Any] = None) -> str:
-    """Get the diff content based on the event type."""
-    if event_data and event_data.get('action') == 'synchronize':
-        # For synchronize events, compare the before and after commits
-        base_sha = event_data.get('before')
-        head_sha = event_data.get('after')
+    """Fetch the diff content using the GitHub API with Accept header."""
+    pr_url = pr_details["pr_obj"].url
+    token = pr_details["github_token"]
 
-        repo_obj = pr_details['repo_obj']
-        try:
-            comparison = repo_obj.compare(base_sha, head_sha)
-            return comparison.diff
-        except Exception as e:
-            print(f"Error getting diff for synchronize event: {e}")
-            return ""  # Or handle the error as appropriate
-    else:
-        # For opened events or fallback, fetch the diff directly from the PullRequest object
-        pr_obj = pr_details['pr_obj']
-        try:
-            # Depending on your library, you might need to explicitly request the diff
-            # If you are using PyGithub, you might need to access it differently.
-            # One common way is to use the 'diff_url' and make a separate request.
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3.diff"
+    }
 
-            # Assuming pr_obj is a PyGithub PullRequest object:
-            headers = {'Accept': 'application/vnd.github.v3.diff'}
-            response = pr_obj._requester.get(pr_obj.diff_url, headers=headers)
-            response.raise_for_status()  # Raise an exception for bad status codes
-            return response.text
+    response = requests.get(pr_url, headers=headers)
+    if response.status_code != 200:
+        raise Exception(f"Failed to fetch diff: {response.status_code} - {response.text}")
 
-            # Alternatively, some libraries might have a direct method to get the diff.
-            # Consult your library's documentation.
+    return response.text
 
-        except Exception as e:
-            print(f"Error getting diff for non-synchronize event: {e}")
-            return ""  # Or handle the error as appropriate
-        
 # PR diff parser
-def parse_diff(diff_content: str) -> List[Dict[str, Any]]:
+def parse_diff(diff_content: str, exclude_patterns: List[str] = None) -> List[Dict[str, Any]]:
+    exclude_patterns = exclude_patterns or []
+
     """Parse the diff content into files and chunks."""
     patch_set = unidiff.PatchSet(diff_content.splitlines())
     parsed_files = []
@@ -504,7 +489,7 @@ def parse_diff(diff_content: str) -> List[Dict[str, Any]]:
         file_path = patched_file.target_file
         
         # Check if file should be excluded
-        if any(glob.fnmatch.fnmatch(file_path, pattern) for pattern in self.exclude_patterns):
+        if any(glob.fnmatch.fnmatch(file_path, pattern) for pattern in exclude_patterns):
             continue
             
         for hunk in patched_file:
@@ -697,14 +682,15 @@ async def main() -> None:
     pr_details = get_pr_details(repository, pr_number, github_token)
     print(pr_details)
 
+
     # Fetch the diff content
     print("Fetching diff content...")
-    diff_content = get_diff(pr_details)
-    print(diff_content)
+    diff_text = get_diff(pr_details)
+    print(diff_text)
     
     # Parse the diff content
     print("Parsing diff content...")
-    parsed_files = parse_diff(diff_content)
+    parsed_files = parse_diff(diff_text, exclude_patterns=["*.mdx", "*.lock"])
     
     if not parsed_files:
         print("No valid files to review found in the PR")
