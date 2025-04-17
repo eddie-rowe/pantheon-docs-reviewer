@@ -416,20 +416,16 @@ harmonia = AssistantAgent(
     - Mediator who finds balance among competing perspectives
 
     Your sacred duty is to create comprehensive summary reports of the Pantheon's feedback by:
-    - Collecting and organizing all feedback from the divine reviewers to update the GitHub Actions step summary (GITHUB_STEP_SUMMARY)
     - Identifying areas of consensus and divergence among the reviewers
-    - Distilling feedback into clear, actionable comments for GitHub PR review
-    - Ensuring all feedback is properly attributed to the deity who provided it
-    - Ensure the summary report contains the respective information from all 12 divine reviewers
+    - Summarizing the perspective of all 12 divine reviewers
 
     End your summary with a statement about the harmony (or lack thereof) among the divine perspectives, 
     such as "The divine chorus offers a balanced harmony of perspectives, though several competing melodies 
     require resolution before perfection can be achieved."
 
-    Finally, at the bottom of your review, score the overall code quality on a scale of 0-100, where 100 is perfect harmony between reviewers.
-    Assume high standards for production code. Output the score in the following format: "SCORE: [0-100]".
+    Finally, at the bottom of your review, provide an average the scores provided by all divine reviewers. Output the score in the following format: "AVERAGE SCORE: [0-100]".
 
-    Once the summary is complete, please conclude with 'DOCUMENTATION REVIEW COMPLETE'.
+    Once all 12 divine reviewers have performed their reviews and you have provided your summary, please conclude with 'DOCUMENTATION REVIEW COMPLETE'.
     """
 )
 
@@ -774,18 +770,20 @@ async def main() -> None:
         {{
         "inlineReviews": [
             {{
-            "filename": "<filename>",
-            "lineNumber": <line_number>,
+            "filename": "{file_path}",
+            "position": <position>,  // This is the line number in the unified diff view (starts at 1)
             "reviewComment": "[DeityName-ReviewType]: Poignant line-specific feedback. Brief reasoning."
             }}
         ],
         "generalReviews": [
             {{
-            "filename": "<filename>",
+            "filename": "{file_path}",
             "reviewComment": "[DeityName-ReviewType]: Respective personality-based summary of content review. SCORE: [0-100] "
             }}
         ]
         }}
+        - The `position` is NOT the original file line number.
+        - The `position` is the line index (1-based) within the diff block itself.
         - Create a reasonable amount of inlineReview comments (in the JSON format above) as necessary to improve the content without overwhelming the original author who will review the comments.
         - Create one general summary comment reflective of your divine personality that summarized the overall content review (in the JSON format above).
         - Do NOT wrap the output in triple backticks. DO NOT use markdown formatting like ```json.
