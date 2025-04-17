@@ -23,7 +23,7 @@ Using this project's structure, you could modify it to become a team of any type
 
 ### 1. Add the workflow file
 
-Create a file `.github/workflows/pantheon-review.yml` in your repository with the content from the provided workflow YAML.
+Create a file `.github/workflows/pantheon_workflow.yml` in your repository with the content from the provided workflow YAML.
 
 ### 2. Add the pantheon reviewer script
 
